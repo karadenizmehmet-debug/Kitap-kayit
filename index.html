@@ -54,6 +54,7 @@
   button.mini { width:auto; min-height:0; margin:0; padding:7px 11px; font-size:13px; font-weight:500; background:transparent; color:var(--soluk); border-color:var(--cizgi); }
   button.mini:hover { background:var(--kagit); }
   button:disabled { opacity:.5; }
+  button[hidden], label[hidden] { display:none; }
   :focus-visible { outline:2px solid var(--yesil); outline-offset:2px; }
   input[type=file] { position:absolute; width:1px; height:1px; opacity:0; overflow:hidden; }
 
@@ -77,8 +78,9 @@
   .kapi-kart { background:var(--yuzey); border:1px solid var(--cizgi); border-radius:18px; padding:28px 22px; max-width:400px; width:100%; text-align:center; }
   .kapi-kart img { width:72px; height:72px; display:block; margin:0 auto 12px; }
   .kapi-kart h1 { margin:0 0 8px; font-family:var(--serif); font-size:28px; }
-  .kapi-kart p { margin:0 0 6px; font-size:15px; line-height:1.45; color:var(--soluk); }
+  .kapi-kart p { white-space:pre-line; margin:0 0 6px; font-size:15px; line-height:1.45; color:var(--soluk); }
 
+  .telif { margin-top:20px; font-size:12px; color:var(--soluk); line-height:1.5; }
   .uye { border-bottom:1px solid var(--cizgi); padding:12px 0; }
   .uye:last-child { border-bottom:0; }
   .uye .ad { font-weight:600; font-size:15px; }
@@ -116,10 +118,11 @@
     <button id="btnGiris" hidden>Google ile giriş yap</button>
     <button id="btnYenile" class="ikincil" hidden>Durumu yenile</button>
     <button id="btnKapiCikis" class="ikincil" hidden>Çıkış yap</button>
+    <div class="telif">© 2026-2027 Mehmet Karadeniz.<br>Tüm hakları saklıdır.</div>
   </div>
 </div>
 <header>
-  <div class="marka"><img src="icon.svg" alt=""><div><b>Künye</b><span class="surum">v3.1 · Mehmet Karadeniz</span></div></div>
+  <div class="marka"><img src="icon.svg" alt=""><div><b>Künye</b><span class="surum">v3.2 · Mehmet Karadeniz</span></div></div>
   <div id="kullanici" hidden><button id="btnCikis" class="mini">Çıkış</button></div>
 </header>
 <div id="karsilama" class="karsilama" hidden>
@@ -190,7 +193,7 @@
 
 
 </main>
-<footer>© Mehmet Karadeniz, 2026-2027</footer>
+<footer>© 2026-2027 Mehmet Karadeniz. Tüm hakları saklıdır.</footer>
 
 <script>
 (function () {
@@ -735,7 +738,7 @@ onAuthStateChanged(auth, (user) => {
     $("kullanici").hidden = true;
     $("karsilama").hidden = true;
     $("yonetim").hidden = true;
-    kapi("Devam etmek için Google hesabınızla giriş yapın.", "btnGiris");
+    kapi("Devam etmek için\nGoogle hesabınızla giriş yapın.", "btnGiris");
     return;
   }
   baslat(user);
