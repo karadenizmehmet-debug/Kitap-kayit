@@ -72,7 +72,7 @@
   </div>
 </div>
 <header>
-  <div>📚 Künye<span class="surum">v2.0 · Mehmet Karadeniz</span></div>
+  <div>📚 Künye<span class="surum">v2.1 · Mehmet Karadeniz</span></div>
   <div id="kullanici" hidden><span id="kullaniciAd"></span><button id="btnCikis" class="mini">Çıkış</button></div>
 </header>
 <main>
@@ -111,6 +111,8 @@
 
   <div class="kart" id="yonetim" hidden>
     <h2>🛠️ Yönetim</h2>
+    <label>Çalıştığım okul (kitap listesi bu okulun)</label>
+    <select id="yoneticiOkul" style="width:100%;padding:8px;font-size:15px;margin-bottom:12px;border:1px solid #c8d1da;border-radius:8px;"></select>
     <label>Gemini API anahtarı (tüm okullar bunu kullanır)</label>
     <input type="password" id="apiKey" placeholder="AIza...">
     <button id="btnAnahtarKaydet" class="ikincil">Anahtarı kaydet</button>
@@ -126,14 +128,17 @@
 <script>
 (function () {
   var ALANLAR = ["demirbas","baslik","yayinevi","basim_no","basim_yili","isbn"];
-  var DEPO = "kitapKayit.v1";
   var duzenlenenId = null;
   var $ = function (id) { return document.getElementById(id); };
 
-  function kayitlariOku() {
-    try { return JSON.parse(localStorage.getItem(DEPO) || "[]"); } catch (e) { return []; }
-  }
-  function kayitlariYaz(liste) { localStorage.setItem(DEPO, JSON.stringify(liste)); }
+  var kayitlar = [];
+  var depo = null;
+  window.kunyeListeVer = function (liste) { kayitlar = liste || []; listele(); };
+  window.kunyeDepoAyarla = function (d) {
+    depo = d;
+    if (!d) { kayitlar = []; listele(); }
+  };
+  function hataGoster(e) { durum("Kaydedilemedi: " + ((e && e.message) || e), "uyari"); }
 
   function durum(metin, sinif) {
     var d = $("durum");
@@ -311,22 +316,19 @@
   $("dosyaGaleri").onchange = function (e) { fotoIsle(e.target.files[0]); e.target.value = ""; };
 
   $("btnKaydet").onclick = function () {
+    if (!depo) { durum("Okul listesi hazır değil. Giriş yapın ve okul atanmasını bekleyin.", "uyari"); return; }
     var o = formuOku();
     if (!o.baslik && !o.isbn) { durum("En az kitap adı veya ISBN gerekli.", "uyari"); return; }
-    var liste = kayitlariOku();
-    if (duzenlenenId) {
-      liste = liste.map(function (k) { return k.id === duzenlenenId ? Object.assign({ id: k.id, tarih: k.tarih }, o) : k; });
-    } else {
-      o.id = Date.now().toString(36);
-      o.tarih = new Date().toISOString().slice(0, 10);
-      liste.push(o);
+    var duzenleme = !!duzenlenenId;
+    if (!duzenleme && o.isbn && kayitlar.some(function (k) { return k.isbn === o.isbn; })) {
+      if (!confirm("Bu ISBN okulda zaten kayıtlı. Yine de eklensin mi?")) return;
     }
-    kayitlariYaz(liste);
+    var id = duzenlenenId || (Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
+    depo.kaydet(id, o, duzenleme).catch(hataGoster);
     duzenlenenId = null;
     formuDoldur(null);
     $("onizleme").style.display = "none";
     durum("Kaydedildi.", "ok");
-    listele();
   };
 
   $("btnTemizle").onclick = function () {
@@ -337,7 +339,7 @@
   };
 
   function listele() {
-    var liste = kayitlariOku();
+    var liste = kayitlar;
     $("sayi").textContent = liste.length;
     var kap = $("liste");
     kap.innerHTML = "";
@@ -365,8 +367,8 @@
       sil.textContent = "Sil";
       sil.onclick = function () {
         if (!confirm("Bu kayıt silinsin mi?\n" + (k.baslik || ""))) return;
-        kayitlariYaz(kayitlariOku().filter(function (x) { return x.id !== k.id; }));
-        listele();
+        if (!depo) return;
+        depo.sil(k.id).catch(hataGoster);
       };
       satir.appendChild(bilgi);
       satir.appendChild(sil);
@@ -376,7 +378,7 @@
   }
 
   $("btnExcel").onclick = function () {
-    var liste = kayitlariOku();
+    var liste = kayitlar;
     if (!liste.length) { durum("İndirilecek kayıt yok.", "uyari"); return; }
     var satirlar = liste.map(function (k) {
       return {
@@ -405,7 +407,7 @@ setTimeout(function () {
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, getDocs, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, query, where, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyA2CtczZ6nbl1fFfS8Rnb7nFHDRHJV4X4s",
@@ -425,7 +427,10 @@ const OKULLAR = {
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const db = getFirestore(app);
+const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+});
+let abonelik = null;
 const $ = (id) => document.getElementById(id);
 const el = (etiket, sinif, metin) => {
   const e = document.createElement(etiket);
@@ -447,6 +452,60 @@ const hataMetni = (e) => {
   if (kod.includes("permission")) return "Firestore izni reddedildi. Kurallar yayınlandı mı?";
   return "Bağlantı hatası: " + (kod || (e && e.message) || e);
 };
+
+function abonelikBitir() {
+  if (abonelik) { abonelik(); abonelik = null; }
+  window.kunyeDepoAyarla(null);
+}
+
+async function yerelAktar(okul, eposta) {
+  let eski = [];
+  try { eski = JSON.parse(localStorage.getItem("kitapKayit.v1") || "[]"); } catch (e) {}
+  if (!eski.length || sessionStorage.getItem("kunyeAktarSorulduu")) return;
+  sessionStorage.setItem("kunyeAktarSorulduu", "1");
+  if (!confirm("Bu telefonda " + eski.length + " eski kayıt var. Okul listesine aktarılsın mı?")) return;
+  const alanlar = ["demirbas", "baslik", "yayinevi", "basim_no", "basim_yili", "isbn"];
+  try {
+    await Promise.all(eski.map((k, i) => {
+      const veri = { okul: okul, ekleyen: eposta, tarih: k.tarih || "", ts: (Date.parse(k.tarih) || Date.now()) + i };
+      alanlar.forEach((a) => { veri[a] = k[a] || ""; });
+      return setDoc(doc(db, "kitaplar", "l" + k.id), veri);
+    }));
+    localStorage.setItem("kitapKayit.v1.aktarildi", JSON.stringify(eski));
+    localStorage.removeItem("kitapKayit.v1");
+  } catch (e) {
+    alert("Aktarılamadı: " + hataMetni(e));
+  }
+}
+
+function aboneOl(okul, user) {
+  abonelikBitir();
+  if (!okul) {
+    $("durum").textContent = "Okul atanmadı. Yönetim kartından okul seçin.";
+    $("durum").className = "uyari";
+    return;
+  }
+  const eposta = (user.email || "").toLowerCase();
+  const q = query(collection(db, "kitaplar"), where("okul", "==", okul));
+  abonelik = onSnapshot(q, (qs) => {
+    const liste = [];
+    qs.forEach((d) => liste.push(Object.assign({ id: d.id }, d.data())));
+    liste.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+    window.kunyeListeVer(liste);
+  }, (e) => {
+    $("durum").textContent = "Liste alınamadı: " + hataMetni(e);
+    $("durum").className = "uyari";
+  });
+  window.kunyeDepoAyarla({
+    kaydet: (id, o, duzenleme) => {
+      const veri = Object.assign({}, o, { okul: okul });
+      if (!duzenleme) { veri.ekleyen = eposta; veri.tarih = new Date().toISOString().slice(0, 10); veri.ts = Date.now(); }
+      return setDoc(doc(db, "kitaplar", id), veri, { merge: true });
+    },
+    sil: (id) => deleteDoc(doc(db, "kitaplar", id))
+  });
+  yerelAktar(okul, eposta);
+}
 
 async function listeYukle() {
   const kap = $("kullaniciListe");
@@ -511,6 +570,7 @@ async function listeYukle() {
 
 async function baslat(user) {
   kapi("Hesap kontrol ediliyor…");
+  abonelikBitir();
   try {
     const ref = doc(db, "profiller", user.uid);
     const eposta = (user.email || "").toLowerCase();
@@ -537,13 +597,34 @@ async function baslat(user) {
       const k = await getDoc(doc(db, "ayarlar", "gemini"));
       if (k.exists()) window.kunyeAnahtar = k.data().anahtar || "";
     } catch (e) {}
-    const kisaOkul = OKULLAR[profil.okul] ? " · " + OKULLAR[profil.okul] : "";
-    $("kullaniciAd").textContent = (user.displayName || eposta).split(" ")[0] + kisaOkul;
+    const chipYaz = () => {
+      $("kullaniciAd").textContent = (user.displayName || eposta).split(" ")[0] + (OKULLAR[profil.okul] ? " · " + OKULLAR[profil.okul] : "");
+    };
+    chipYaz();
     $("kullanici").hidden = false;
     if (yonetici) {
       $("yonetim").hidden = false;
       $("anahtarDurum").textContent = window.kunyeAnahtar ? "Kayıtlı anahtar var." : "Henüz anahtar kaydedilmedi.";
       listeYukle();
+      const yo = $("yoneticiOkul");
+      yo.textContent = "";
+      const b0 = el("option", "", "Okul seç");
+      b0.value = "";
+      yo.appendChild(b0);
+      Object.keys(OKULLAR).forEach((o) => {
+        const op = el("option", "", o);
+        op.value = o;
+        if (profil.okul === o) op.selected = true;
+        yo.appendChild(op);
+      });
+      yo.onchange = async () => {
+        try {
+          await updateDoc(ref, { okul: yo.value || null });
+          profil.okul = yo.value || null;
+          chipYaz();
+          aboneOl(profil.okul, user);
+        } catch (e) { alert("Kaydedilemedi: " + hataMetni(e)); }
+      };
     } else {
       $("yonetim").hidden = true;
       if (!window.kunyeAnahtar) {
@@ -551,6 +632,7 @@ async function baslat(user) {
         $("durum").className = "uyari";
       }
     }
+    aboneOl(profil.okul, user);
     $("kapi").hidden = true;
   } catch (e) {
     kapi(hataMetni(e), "btnYenile", "btnKapiCikis");
@@ -560,6 +642,7 @@ async function baslat(user) {
 onAuthStateChanged(auth, (user) => {
   if (!user) {
     window.kunyeAnahtar = "";
+    abonelikBitir();
     $("kullanici").hidden = true;
     $("yonetim").hidden = true;
     kapi("Devam etmek için Google hesabınızla giriş yapın.", "btnGiris");
