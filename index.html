@@ -39,10 +39,42 @@
   label.dugme { display:block; text-align:center; font-size:16px; padding:12px 14px; border-radius:10px; background:var(--mavi); color:#fff; margin-top:10px; margin-bottom:0; }
   label.dugme.ikincil { background:#e3e9ef; color:#1c1c1c; }
   .surum { display:block; font-size:12px; font-weight:400; opacity:.8; margin-top:2px; }
+
+  header { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+  #kullanici { display:flex; align-items:center; font-size:13px; font-weight:400; }
+  #kullanici[hidden] { display:none; }
+  button.mini { width:auto; margin:0 0 0 8px; padding:6px 10px; font-size:13px; background:rgba(255,255,255,.2); }
+  .kapi { position:fixed; inset:0; background:#f6f8fa; z-index:50; display:flex; align-items:center; justify-content:center; padding:16px; }
+  .kapi[hidden] { display:none; }
+  .kapi-kart { background:#fff; border-radius:12px; padding:22px; max-width:420px; width:100%; text-align:center; box-shadow:0 1px 3px rgba(0,0,0,.08); }
+  .kapi-kart h1 { margin:0 0 10px; font-size:22px; color:var(--mavi); }
+  .kapi-kart p { margin:0 0 6px; font-size:15px; line-height:1.4; }
+  .uye { border-bottom:1px solid #eee; padding:10px 0; }
+  .uye:last-child { border-bottom:0; }
+  .uye .ad { font-weight:600; font-size:15px; }
+  .uye .eposta { font-size:12px; color:#666; }
+  .uye select { width:100%; padding:8px; font-size:15px; margin-top:6px; border:1px solid #c8d1da; border-radius:8px; }
+  .uye .btnler { display:flex; gap:8px; }
+  .uye .btnler button { width:auto; flex:1; margin-top:8px; padding:8px 10px; font-size:14px; }
+  .etiket { display:inline-block; font-size:11px; font-weight:400; padding:2px 8px; border-radius:10px; margin-left:6px; }
+  .etiket.ok { background:#dff3e6; color:#1b7a3d; }
+  .etiket.bekle { background:#fff1cc; color:#8a6100; }
 </style>
 </head>
 <body>
-<header>📚 Künye<span class="surum">v1.2 · Mehmet Karadeniz</span></header>
+<div id="kapi" class="kapi">
+  <div class="kapi-kart">
+    <h1>📚 Künye</h1>
+    <p id="kapiMetin">Yükleniyor…</p>
+    <button id="btnGiris" hidden>Google ile giriş yap</button>
+    <button id="btnYenile" class="ikincil" hidden>Durumu yenile</button>
+    <button id="btnKapiCikis" class="ikincil" hidden>Çıkış yap</button>
+  </div>
+</div>
+<header>
+  <div>📚 Künye<span class="surum">v2.0 · Mehmet Karadeniz</span></div>
+  <div id="kullanici" hidden><span id="kullaniciAd"></span><button id="btnCikis" class="mini">Çıkış</button></div>
+</header>
 <main>
 
   <div class="kart">
@@ -77,14 +109,15 @@
     <button id="btnExcel">📥 Excel indir (.xlsx)</button>
   </div>
 
-  <div class="kart">
-    <details id="ayarDetay">
-      <summary>⚙️ Ayarlar (Gemini API anahtarı)</summary>
-      <label>Gemini API anahtarı</label>
-      <input type="password" id="apiKey" placeholder="AIza...">
-      <button id="btnAnahtarKaydet" class="ikincil">Anahtarı kaydet</button>
-      <p style="font-size:13px;color:#555;">Ücretsiz anahtar: aistudio.google.com → "Get API key". Anahtar sadece bu telefonda saklanır.</p>
-    </details>
+  <div class="kart" id="yonetim" hidden>
+    <h2>🛠️ Yönetim</h2>
+    <label>Gemini API anahtarı (tüm okullar bunu kullanır)</label>
+    <input type="password" id="apiKey" placeholder="AIza...">
+    <button id="btnAnahtarKaydet" class="ikincil">Anahtarı kaydet</button>
+    <div id="anahtarDurum" style="font-size:13px;margin-top:6px;"></div>
+    <h2 style="margin-top:18px;">Kullanıcılar</h2>
+    <div id="kullaniciListe">Yükleniyor…</div>
+    <button id="btnListeYenile" class="ikincil">Listeyi yenile</button>
   </div>
 
 </main>
@@ -94,7 +127,6 @@
 (function () {
   var ALANLAR = ["demirbas","baslik","yayinevi","basim_no","basim_yili","isbn"];
   var DEPO = "kitapKayit.v1";
-  var ANAHTAR = "kitapKayit.apiKey";
   var duzenlenenId = null;
   var $ = function (id) { return document.getElementById(id); };
 
@@ -180,8 +212,8 @@
     "Sayfada olmayan veya okunamayan alanı boş string yap, tahmin etme. Türkçe karakterleri doğru yaz.";
 
   async function oku(base64, model, dusun) {
-    var key = localStorage.getItem(ANAHTAR);
-    if (!key) { $("ayarDetay").open = true; throw new Error("Önce ayarlardan Gemini API anahtarını girin."); }
+    var key = window.kunyeAnahtar || "";
+    if (!key) { throw new Error("Gemini anahtarı yok. Yönetici anahtarı henüz girmemiş olabilir."); }
     var cevap = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent", {
       method: "POST",
       signal: AbortSignal.timeout(12000),
@@ -207,7 +239,7 @@
     var liste = ["gemini-3.8-flash"];
     try {
       var r = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200", {
-        headers: { "x-goog-api-key": localStorage.getItem(ANAHTAR) },
+        headers: { "x-goog-api-key": window.kunyeAnahtar || "" },
         signal: AbortSignal.timeout(10000)
       });
       var v = await r.json();
@@ -361,18 +393,207 @@
     XLSX.writeFile(wb, "kitap-kayit-" + new Date().toISOString().slice(0, 10) + ".xlsx");
   };
 
-  $("btnAnahtarKaydet").onclick = function () {
-    var v = $("apiKey").value.trim();
-    if (!v) return;
-    localStorage.setItem(ANAHTAR, v);
-    $("apiKey").value = "";
-    $("ayarDetay").open = false;
-    durum("Anahtar kaydedildi.", "ok");
-  };
-
-  if (!localStorage.getItem(ANAHTAR)) $("ayarDetay").open = true;
   listele();
 })();
+</script>
+<script>
+setTimeout(function () {
+  var m = document.getElementById("kapiMetin");
+  if (m && m.textContent === "Yükleniyor…") m.textContent = "Bağlantı kurulamadı. İnternetinizi kontrol edip sayfayı yenileyin.";
+}, 12000);
+</script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+import { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, getDocs, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyA2CtczZ6nbl1fFfS8Rnb7nFHDRHJV4X4s",
+  authDomain: "kunye-daa1d.firebaseapp.com",
+  projectId: "kunye-daa1d",
+  storageBucket: "kunye-daa1d.firebasestorage.app",
+  messagingSenderId: "564683754253",
+  appId: "1:564683754253:web:e9b857e87d79107faebe44"
+};
+
+const YONETICI = "karadenizmehmet@gmail.com";
+const OKULLAR = {
+  "Karahüyük Ali Akkanat Ortaokulu": "Karahüyük",
+  "Nimetullah Nahçivani İmam Hatip Ortaokulu": "Nimetullah",
+  "Şehit Coşkun Karabulut İmam Hatip Ortaokulu": "Ş. Coşkun"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const $ = (id) => document.getElementById(id);
+const el = (etiket, sinif, metin) => {
+  const e = document.createElement(etiket);
+  if (sinif) e.className = sinif;
+  if (metin) e.textContent = metin;
+  return e;
+};
+
+window.kunyeAnahtar = "";
+
+const kapi = (metin, ...dugmeler) => {
+  $("kapi").hidden = false;
+  $("kapiMetin").textContent = metin;
+  ["btnGiris", "btnYenile", "btnKapiCikis"].forEach((id) => { $(id).hidden = !dugmeler.includes(id); });
+};
+
+const hataMetni = (e) => {
+  const kod = e && e.code ? String(e.code) : "";
+  if (kod.includes("permission")) return "Firestore izni reddedildi. Kurallar yayınlandı mı?";
+  return "Bağlantı hatası: " + (kod || (e && e.message) || e);
+};
+
+async function listeYukle() {
+  const kap = $("kullaniciListe");
+  kap.textContent = "Yükleniyor…";
+  try {
+    const qs = await getDocs(collection(db, "profiller"));
+    const uyeler = [];
+    qs.forEach((d) => uyeler.push(Object.assign({ id: d.id }, d.data())));
+    uyeler.sort((a, b) => (a.durum === "bekliyor" ? 0 : 1) - (b.durum === "bekliyor" ? 0 : 1));
+    kap.textContent = "";
+    if (!uyeler.length) { kap.textContent = "Kayıt yok."; return; }
+    uyeler.forEach((u) => {
+      const satir = el("div", "uye");
+      const ad = el("div", "ad", u.ad || u.email || "");
+      ad.appendChild(el("span", u.durum === "onayli" ? "etiket ok" : "etiket bekle", u.durum === "onayli" ? "Onaylı" : "Bekliyor"));
+      satir.appendChild(ad);
+      satir.appendChild(el("div", "eposta", u.email || ""));
+      if (u.rol === "yonetici") {
+        satir.appendChild(el("div", "eposta", "Yönetici"));
+        kap.appendChild(satir);
+        return;
+      }
+      const sec = document.createElement("select");
+      const bos = el("option", "", "Okul seç");
+      bos.value = "";
+      sec.appendChild(bos);
+      Object.keys(OKULLAR).forEach((o) => {
+        const op = el("option", "", o);
+        op.value = o;
+        if (u.okul === o) op.selected = true;
+        sec.appendChild(op);
+      });
+      satir.appendChild(sec);
+      const btnler = el("div", "btnler");
+      const tamam = el("button", "", u.durum === "onayli" ? "Okulu güncelle" : "Onayla");
+      tamam.onclick = async () => {
+        if (!sec.value) { alert("Önce okul seçin."); return; }
+        try {
+          await updateDoc(doc(db, "profiller", u.id), { durum: "onayli", okul: sec.value });
+          listeYukle();
+        } catch (e) { alert("Kaydedilemedi: " + e.message); }
+      };
+      btnler.appendChild(tamam);
+      if (u.durum === "onayli") {
+        const kaldir = el("button", "sil", "Erişimi kaldır");
+        kaldir.onclick = async () => {
+          if (!confirm((u.ad || u.email) + " erişimi kaldırılsın mı?")) return;
+          try {
+            await updateDoc(doc(db, "profiller", u.id), { durum: "bekliyor", okul: null });
+            listeYukle();
+          } catch (e) { alert("Kaldırılamadı: " + e.message); }
+        };
+        btnler.appendChild(kaldir);
+      }
+      satir.appendChild(btnler);
+      kap.appendChild(satir);
+    });
+  } catch (e) {
+    kap.textContent = "Liste alınamadı: " + hataMetni(e);
+  }
+}
+
+async function baslat(user) {
+  kapi("Hesap kontrol ediliyor…");
+  try {
+    const ref = doc(db, "profiller", user.uid);
+    const eposta = (user.email || "").toLowerCase();
+    const yonetici = eposta === YONETICI;
+    let snap = await getDoc(ref);
+    if (!snap.exists()) {
+      await setDoc(ref, {
+        email: eposta,
+        ad: user.displayName || eposta,
+        durum: yonetici ? "onayli" : "bekliyor",
+        rol: yonetici ? "yonetici" : "kullanici",
+        okul: null,
+        kayit: serverTimestamp()
+      });
+      snap = await getDoc(ref);
+    }
+    const profil = snap.data();
+    if (profil.durum !== "onayli") {
+      kapi("Merhaba " + (user.displayName || eposta) + ". Hesabınız yönetici onayı bekliyor. Onaylanınca durumu yenileyin.", "btnYenile", "btnKapiCikis");
+      return;
+    }
+    window.kunyeAnahtar = "";
+    try {
+      const k = await getDoc(doc(db, "ayarlar", "gemini"));
+      if (k.exists()) window.kunyeAnahtar = k.data().anahtar || "";
+    } catch (e) {}
+    const kisaOkul = OKULLAR[profil.okul] ? " · " + OKULLAR[profil.okul] : "";
+    $("kullaniciAd").textContent = (user.displayName || eposta).split(" ")[0] + kisaOkul;
+    $("kullanici").hidden = false;
+    if (yonetici) {
+      $("yonetim").hidden = false;
+      $("anahtarDurum").textContent = window.kunyeAnahtar ? "Kayıtlı anahtar var." : "Henüz anahtar kaydedilmedi.";
+      listeYukle();
+    } else {
+      $("yonetim").hidden = true;
+      if (!window.kunyeAnahtar) {
+        $("durum").textContent = "Yönetici henüz Gemini anahtarını girmedi. Fotoğraf okunamaz, formu elle doldurabilirsiniz.";
+        $("durum").className = "uyari";
+      }
+    }
+    $("kapi").hidden = true;
+  } catch (e) {
+    kapi(hataMetni(e), "btnYenile", "btnKapiCikis");
+  }
+}
+
+onAuthStateChanged(auth, (user) => {
+  if (!user) {
+    window.kunyeAnahtar = "";
+    $("kullanici").hidden = true;
+    $("yonetim").hidden = true;
+    kapi("Devam etmek için Google hesabınızla giriş yapın.", "btnGiris");
+    return;
+  }
+  baslat(user);
+});
+
+$("btnGiris").onclick = async () => {
+  try {
+    await signInWithPopup(auth, new GoogleAuthProvider());
+  } catch (e) {
+    const kod = e && e.code ? String(e.code) : "";
+    if (kod === "auth/popup-closed-by-user" || kod === "auth/cancelled-popup-request") return;
+    kapi("Giriş yapılamadı (" + (kod || (e && e.message)) + ").", "btnGiris");
+  }
+};
+$("btnYenile").onclick = () => { if (auth.currentUser) baslat(auth.currentUser); };
+$("btnKapiCikis").onclick = () => signOut(auth);
+$("btnCikis").onclick = () => signOut(auth);
+$("btnListeYenile").onclick = listeYukle;
+
+$("btnAnahtarKaydet").onclick = async () => {
+  const v = $("apiKey").value.trim();
+  if (!v) return;
+  try {
+    await setDoc(doc(db, "ayarlar", "gemini"), { anahtar: v, guncelleme: serverTimestamp() });
+    window.kunyeAnahtar = v;
+    $("apiKey").value = "";
+    $("anahtarDurum").textContent = "Anahtar kaydedildi.";
+  } catch (e) {
+    $("anahtarDurum").textContent = "Kaydedilemedi: " + hataMetni(e);
+  }
+};
 </script>
 </body>
 </html>
