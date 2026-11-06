@@ -72,7 +72,7 @@
   </div>
 </div>
 <header>
-  <div>📚 Künye<span class="surum">v2.1 · Mehmet Karadeniz</span></div>
+  <div>📚 Künye<span class="surum">v2.2 · Mehmet Karadeniz</span></div>
   <div id="kullanici" hidden><span id="kullaniciAd"></span><button id="btnCikis" class="mini">Çıkış</button></div>
 </header>
 <main>
@@ -407,7 +407,7 @@ setTimeout(function () {
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, query, where, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, query, where, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyA2CtczZ6nbl1fFfS8Rnb7nFHDRHJV4X4s",
@@ -575,7 +575,8 @@ async function baslat(user) {
     const ref = doc(db, "profiller", user.uid);
     const eposta = (user.email || "").toLowerCase();
     const yonetici = eposta === YONETICI;
-    let snap = await getDoc(ref);
+    let snap;
+    try { snap = await getDocFromServer(ref); } catch (e) { snap = await getDoc(ref); }
     if (!snap.exists()) {
       await setDoc(ref, {
         email: eposta,
