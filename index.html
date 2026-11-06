@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="Mehmet Karadeniz, 2026-2027">
+<meta name="copyright" content="Mehmet Karadeniz, 2026-2027">
+<meta name="theme-color" content="#1f4e79">
+<title>Kitap Kâtibi</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+  :root { --mavi:#1f4e79; --acik:#eef3f8; --kirmizi:#b3261e; --yesil:#1b7a3d; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:#f6f8fa; color:#1c1c1c; }
+  header { background:var(--mavi); color:#fff; padding:14px 16px; font-size:18px; font-weight:600; }
+  main { max-width:560px; margin:0 auto; padding:12px; }
+  .kart { background:#fff; border-radius:12px; padding:14px; margin-bottom:12px; box-shadow:0 1px 3px rgba(0,0,0,.08); }
+  h2 { margin:0 0 10px; font-size:16px; color:var(--mavi); }
+  label { display:block; font-size:13px; margin:8px 0 3px; color:#444; }
+  input[type=text], input[type=password] { width:100%; padding:10px; font-size:16px; border:1px solid #c8d1da; border-radius:8px; }
+  .satir { display:flex; gap:8px; }
+  .satir > div { flex:1; }
+  button { font-size:16px; padding:12px 14px; border:0; border-radius:10px; background:var(--mavi); color:#fff; width:100%; margin-top:10px; }
+  button.ikincil { background:#e3e9ef; color:#1c1c1c; }
+  button.sil { background:var(--kirmizi); width:auto; padding:6px 10px; font-size:13px; margin:0; }
+  button:disabled { opacity:.5; }
+  #durum { font-size:14px; margin-top:8px; min-height:20px; }
+  .uyari { color:var(--kirmizi); }
+  .ok { color:var(--yesil); }
+  #onizleme { max-width:100%; border-radius:8px; margin-top:10px; display:none; }
+  .kayit { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:10px 0; border-bottom:1px solid #eee; }
+  .kayit:last-child { border-bottom:0; }
+  .kayit .bilgi { flex:1; cursor:pointer; }
+  .kayit .ad { font-weight:600; font-size:15px; }
+  .kayit .alt { font-size:12px; color:#666; }
+  details summary { cursor:pointer; font-size:15px; color:var(--mavi); }
+  footer { text-align:center; font-size:12px; color:#777; padding:14px; }
+  input[type=file] { position:absolute; width:1px; height:1px; opacity:0; overflow:hidden; }
+  label.dugme { display:block; text-align:center; font-size:16px; padding:12px 14px; border-radius:10px; background:var(--mavi); color:#fff; margin-top:10px; margin-bottom:0; }
+  label.dugme.ikincil { background:#e3e9ef; color:#1c1c1c; }
+  .surum { display:block; font-size:12px; font-weight:400; opacity:.8; margin-top:2px; }
+</style>
+</head>
+<body>
+<header>📚 Kitap Kâtibi<span class="surum">v1.1 · Mehmet Karadeniz</span></header>
+<main>
+
+  <div class="kart">
+    <h2>1. Fotoğraf çek</h2>
+    <label class="dugme" for="dosyaKamera">📷 Telif sayfasının fotoğrafını çek</label>
+    <label class="dugme ikincil" for="dosyaGaleri">🖼️ Galeriden seç</label>
+    <input type="file" id="dosyaKamera" accept="image/*" capture="environment">
+    <input type="file" id="dosyaGaleri" accept="image/*">
+    <img id="onizleme" alt="Önizleme">
+    <div id="durum"></div>
+    <div id="sure" style="font-size:13px;color:#666;"></div>
+  </div>
+
+  <div class="kart">
+    <h2>2. Kontrol et ve kaydet</h2>
+    <label>Demirbaş no (elle yazın)</label><input type="text" id="demirbas" inputmode="numeric">
+    <label>Kitap adı</label><input type="text" id="baslik">
+    <label>Yayınevi</label><input type="text" id="yayinevi">
+    <div class="satir">
+            <div><label>Basım no</label><input type="text" id="basim_no" inputmode="numeric"></div>
+      <div><label>Basım yılı</label><input type="text" id="basim_yili" inputmode="numeric"></div>
+    </div>
+    <label>ISBN</label><input type="text" id="isbn">
+    <div id="isbnDurum" style="font-size:13px;margin-top:4px;"></div>
+    <button id="btnKaydet">💾 Kaydet</button>
+    <button id="btnTemizle" class="ikincil">Formu temizle</button>
+  </div>
+
+  <div class="kart">
+    <h2>3. Kayıtlar (<span id="sayi">0</span>)</h2>
+    <div id="liste"></div>
+    <button id="btnExcel">📥 Excel indir (.xlsx)</button>
+  </div>
+
+  <div class="kart">
+    <details id="ayarDetay">
+      <summary>⚙️ Ayarlar (Gemini API anahtarı)</summary>
+      <label>Gemini API anahtarı</label>
+      <input type="password" id="apiKey" placeholder="AIza...">
+      <button id="btnAnahtarKaydet" class="ikincil">Anahtarı kaydet</button>
+      <p style="font-size:13px;color:#555;">Ücretsiz anahtar: aistudio.google.com → "Get API key". Anahtar sadece bu telefonda saklanır.</p>
+    </details>
+  </div>
+
+</main>
+<footer>© Mehmet Karadeniz, 2026-2027</footer>
+
+<script>
+(function () {
+  var ALANLAR = ["demirbas","baslik","yayinevi","basim_no","basim_yili","isbn"];
+  var DEPO = "kitapKayit.v1";
+  var ANAHTAR = "kitapKayit.apiKey";
+  var duzenlenenId = null;
+  var $ = function (id) { return document.getElementById(id); };
+
+  function kayitlariOku() {
+    try { return JSON.parse(localStorage.getItem(DEPO) || "[]"); } catch (e) { return []; }
+  }
+  function kayitlariYaz(liste) { localStorage.setItem(DEPO, JSON.stringify(liste)); }
+
+  function durum(metin, sinif) {
+    var d = $("durum");
+    d.textContent = metin || "";
+    d.className = sinif || "";
+  }
+
+  // ISBN sağlama toplamı kontrolü
+  function isbnGecerli(s) {
+    var t = (s || "").replace(/[^0-9Xx]/g, "").toUpperCase();
+    var i, top = 0;
+    if (t.length === 10) {
+      for (i = 0; i < 10; i++) {
+        var v = t[i] === "X" ? 10 : parseInt(t[i], 10);
+        if (isNaN(v)) return false;
+        top += v * (10 - i);
+      }
+      return top % 11 === 0;
+    }
+    if (t.length === 13) {
+      for (i = 0; i < 13; i++) {
+        var n = parseInt(t[i], 10);
+        if (isNaN(n)) return false;
+        top += n * (i % 2 === 0 ? 1 : 3);
+      }
+      return top % 10 === 0;
+    }
+    return false;
+  }
+  function isbnKontrol() {
+    var v = $("isbn").value.trim(), e = $("isbnDurum");
+    if (!v) { e.textContent = ""; return; }
+    if (isbnGecerli(v)) { e.textContent = "✓ ISBN sağlama toplamı doğru"; e.className = "ok"; }
+    else { e.textContent = "⚠ ISBN tutmuyor, fotoğraftaki ile karşılaştırın"; e.className = "uyari"; }
+  }
+  $("isbn").addEventListener("input", isbnKontrol);
+
+  function formuDoldur(o) {
+    ALANLAR.forEach(function (a) { $(a).value = (o && o[a]) ? String(o[a]) : ""; });
+    isbnKontrol();
+  }
+  function formuOku() {
+    var o = {};
+    ALANLAR.forEach(function (a) { o[a] = $(a).value.trim(); });
+    o.isbn = o.isbn.replace(/[\s-]/g, "");
+    o.basim_no = o.basim_no.replace(/\D/g, "");
+    return o;
+  }
+
+  // Fotoğrafı küçült (hız ve kota için)
+  function kucult(dosya) {
+    return new Promise(function (coz, red) {
+      var url = URL.createObjectURL(dosya);
+      var img = new Image();
+      img.onload = function () {
+        var maks = 1280, oran = Math.min(1, maks / Math.max(img.width, img.height));
+        var c = document.createElement("canvas");
+        c.width = Math.round(img.width * oran);
+        c.height = Math.round(img.height * oran);
+        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+        var dataUrl = c.toDataURL("image/jpeg", 0.8);
+        $("onizleme").src = dataUrl;
+        $("onizleme").style.display = "block";
+        URL.revokeObjectURL(url);
+        coz(dataUrl.split(",")[1]);
+      };
+      img.onerror = function () { red(new Error("Fotoğraf açılamadı")); };
+      img.src = url;
+    });
+  }
+
+  var PROMPT =
+    "Bu bir kitabın telif/künye sayfasının fotoğrafı. Sayfadaki bilgileri oku ve SADECE şu anahtarlarla bir JSON nesnesi döndür: " +
+    "baslik (kitap adı; yoksa sayfada geçen özgün ad), yayinevi, " +
+    "basim_no (yalnızca sayı, örn. 87), basim_yili (4 haneli), isbn (tire ve boşluk olmadan, sadece rakamlar; son hane X olabilir). " +
+    "Sayfada olmayan veya okunamayan alanı boş string yap, tahmin etme. Türkçe karakterleri doğru yaz.";
+
+  async function oku(base64, model, dusun) {
+    var key = localStorage.getItem(ANAHTAR);
+    if (!key) { $("ayarDetay").open = true; throw new Error("Önce ayarlardan Gemini API anahtarını girin."); }
+    var cevap = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent", {
+      method: "POST",
+      signal: AbortSignal.timeout(12000),
+      headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: PROMPT }, { inline_data: { mime_type: "image/jpeg", data: base64 } }] }],
+        generationConfig: Object.assign({ responseMimeType: "application/json", temperature: 0, maxOutputTokens: 4000 }, dusun ? { thinkingConfig: { thinkingLevel: "low" } } : {})
+      })
+    });
+    if (!cevap.ok) {
+      var hata = "";
+      try { hata = (await cevap.json()).error.message; } catch (e) {}
+      throw new Error("Okuma hatası (" + cevap.status + "). " + hata);
+    }
+    var veri = await cevap.json();
+    var metin = veri.candidates[0].content.parts[0].text;
+    return JSON.parse(metin);
+  }
+
+  var modelOnbellek = null;
+  async function modelleriGetir() {
+    if (modelOnbellek) return modelOnbellek;
+    var liste = ["gemini-3.8-flash"];
+    try {
+      var r = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200", {
+        headers: { "x-goog-api-key": localStorage.getItem(ANAHTAR) },
+        signal: AbortSignal.timeout(10000)
+      });
+      var v = await r.json();
+      (v.models || []).forEach(function (m) {
+        var ad = (m.name || "").replace("models/", "");
+        var uygun = (m.supportedGenerationMethods || []).indexOf("generateContent") >= 0;
+        if (uygun && /flash/.test(ad) && !/image|tts|live|audio|embed|robotics/.test(ad) && liste.indexOf(ad) < 0) liste.push(ad);
+      });
+    } catch (e) {}
+    var puan = function (a) {
+      if (/3\.5.*flash-lite/.test(a)) return 0;
+      if (/3\.1.*flash-lite/.test(a)) return 1;
+      if (/3\.[68].*flash/.test(a) && !/lite/.test(a)) return 2;
+      if (/flash-lite/.test(a)) return 3;
+      return 4;
+    };
+    modelOnbellek = liste.slice().sort(function (a, b) { return puan(a) - puan(b); }).slice(0, 5);
+    return modelOnbellek;
+  }
+
+  async function okuTekrar(b64) {
+    var modeller = await modelleriGetir();
+    var sonHata;
+    for (var tur = 0; tur < 2; tur++) {
+      for (var i = 0; i < modeller.length; i++) {
+        try {
+          durum("Okunuyor (" + modeller[i] + ")…");
+          try {
+            return await oku(b64, modeller[i], true);
+          } catch (e0) {
+            if (/\(400\)/.test(e0.message)) return await oku(b64, modeller[i], false);
+            throw e0;
+          }
+        } catch (e) {
+          sonHata = e;
+          var gecici = /\((503|429|404)\)/.test(e.message) || e.name === "TimeoutError" || e.name === "AbortError";
+          if (!gecici) throw e;
+        }
+      }
+      if (tur === 0) {
+        durum("Servis yoğun, 4 sn sonra tekrar…");
+        await new Promise(function (r) { setTimeout(r, 4000); });
+      }
+    }
+    throw sonHata;
+  }
+
+  async function fotoIsle(dosya) {
+    if (!dosya) return;
+    durum("Fotoğraf okunuyor…");
+    var t0 = Date.now();
+    clearInterval(window.__zt);
+    window.__zt = setInterval(function () { $("sure").textContent = "⏱ " + Math.round((Date.now() - t0) / 1000) + " sn"; }, 500);
+    try {
+      var b64 = await kucult(dosya);
+      var sonuc = await okuTekrar(b64);
+      sonuc.isbn = String(sonuc.isbn || "").replace(/[^0-9Xx]/g, "");
+      clearInterval(window.__zt);
+      duzenlenenId = null;
+      formuDoldur(sonuc);
+      durum("Okundu. Lütfen kontrol edip Kaydet'e basın.", "ok");
+    } catch (e) {
+      clearInterval(window.__zt);
+      durum(e.message, "uyari");
+    }
+  }
+
+  $("dosyaKamera").onchange = function (e) { fotoIsle(e.target.files[0]); e.target.value = ""; };
+  $("dosyaGaleri").onchange = function (e) { fotoIsle(e.target.files[0]); e.target.value = ""; };
+
+  $("btnKaydet").onclick = function () {
+    var o = formuOku();
+    if (!o.baslik && !o.isbn) { durum("En az kitap adı veya ISBN gerekli.", "uyari"); return; }
+    var liste = kayitlariOku();
+    if (duzenlenenId) {
+      liste = liste.map(function (k) { return k.id === duzenlenenId ? Object.assign({ id: k.id, tarih: k.tarih }, o) : k; });
+    } else {
+      o.id = Date.now().toString(36);
+      o.tarih = new Date().toISOString().slice(0, 10);
+      liste.push(o);
+    }
+    kayitlariYaz(liste);
+    duzenlenenId = null;
+    formuDoldur(null);
+    $("onizleme").style.display = "none";
+    durum("Kaydedildi.", "ok");
+    listele();
+  };
+
+  $("btnTemizle").onclick = function () {
+    duzenlenenId = null;
+    formuDoldur(null);
+    $("onizleme").style.display = "none";
+    durum("");
+  };
+
+  function listele() {
+    var liste = kayitlariOku();
+    $("sayi").textContent = liste.length;
+    var kap = $("liste");
+    kap.innerHTML = "";
+    liste.slice().reverse().forEach(function (k) {
+      var satir = document.createElement("div");
+      satir.className = "kayit";
+      var bilgi = document.createElement("div");
+      bilgi.className = "bilgi";
+      var ad = document.createElement("div");
+      ad.className = "ad";
+      ad.textContent = k.baslik || "(adsız)";
+      var alt = document.createElement("div");
+      alt.className = "alt";
+      alt.textContent = [k.demirbas ? "Dmr " + k.demirbas : "", k.yayinevi, k.basim_no ? k.basim_no + ". basım" : "", k.basim_yili].filter(Boolean).join(" · ");
+      bilgi.appendChild(ad);
+      bilgi.appendChild(alt);
+      bilgi.onclick = function () {
+        duzenlenenId = k.id;
+        formuDoldur(k);
+        durum("Düzenleme modunda. Değiştirip Kaydet'e basın.");
+        window.scrollTo(0, 0);
+      };
+      var sil = document.createElement("button");
+      sil.className = "sil";
+      sil.textContent = "Sil";
+      sil.onclick = function () {
+        if (!confirm("Bu kayıt silinsin mi?\n" + (k.baslik || ""))) return;
+        kayitlariYaz(kayitlariOku().filter(function (x) { return x.id !== k.id; }));
+        listele();
+      };
+      satir.appendChild(bilgi);
+      satir.appendChild(sil);
+      kap.appendChild(satir);
+    });
+    if (!liste.length) kap.textContent = "Henüz kayıt yok.";
+  }
+
+  $("btnExcel").onclick = function () {
+    var liste = kayitlariOku();
+    if (!liste.length) { durum("İndirilecek kayıt yok.", "uyari"); return; }
+    var satirlar = liste.map(function (k) {
+      return {
+        "ISBN": k.isbn || "", "Demirbas": k.demirbas || "", "BaskiYili": k.basim_yili || "",
+        "Baslik": k.baslik || "", "BasimSayisi": k.basim_no ? k.basim_no + ". basım" : "",
+        "Yayinevi": k.yayinevi || ""
+      };
+    });
+    var ws = XLSX.utils.json_to_sheet(satirlar, { header: ["ISBN", "Demirbas", "BaskiYili", "Baslik", "BasimSayisi", "Yayinevi"] });
+    ws["!cols"] = [{ wch: 16 }, { wch: 10 }, { wch: 10 }, { wch: 36 }, { wch: 12 }, { wch: 22 }];
+    var wb = XLSX.utils.book_new();
+    wb.Props = { Title: "Kitap Kâtibi", Author: "Mehmet Karadeniz, 2026-2027" };
+    XLSX.utils.book_append_sheet(wb, ws, "Kitaplar");
+    XLSX.writeFile(wb, "kitap-kayit-" + new Date().toISOString().slice(0, 10) + ".xlsx");
+  };
+
+  $("btnAnahtarKaydet").onclick = function () {
+    var v = $("apiKey").value.trim();
+    if (!v) return;
+    localStorage.setItem(ANAHTAR, v);
+    $("apiKey").value = "";
+    $("ayarDetay").open = false;
+    durum("Anahtar kaydedildi.", "ok");
+  };
+
+  if (!localStorage.getItem(ANAHTAR)) $("ayarDetay").open = true;
+  listele();
+})();
+</script>
+</body>
+</html>
