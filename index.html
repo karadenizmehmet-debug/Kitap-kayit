@@ -74,7 +74,7 @@
   </div>
 </div>
 <header>
-  <div>📚 Künye<span class="surum">v2.3 · Mehmet Karadeniz</span></div>
+  <div>📚 Künye<span class="surum">v2.4 · Mehmet Karadeniz</span></div>
   <div id="kullanici" hidden><span id="kullaniciAd"></span><button id="btnCikis" class="mini">Çıkış</button></div>
 </header>
 <main>
@@ -120,6 +120,7 @@
 
   <div class="kart">
     <h2>3. Kayıtlar (<span id="sayi">0</span>)</h2>
+    <div style="font-size:13px;color:#666;margin:-6px 0 8px;">Düzeltmek için kitabın üstüne dokunun.</div>
     <div id="liste"></div>
     <button id="btnExcel">📥 Excel indir (.xlsx)</button>
   </div>
@@ -330,6 +331,7 @@
     var id = duzenlenenId || (Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
     depo.kaydet(id, o, duzenleme).catch(hataGoster);
     duzenlenenId = null;
+    $("btnKaydet").textContent = "💾 Kaydet";
     formuDoldur(null);
     $("onizleme").style.display = "none";
     durum("Kaydedildi.", "ok");
@@ -337,6 +339,7 @@
 
   $("btnTemizle").onclick = function () {
     duzenlenenId = null;
+    $("btnKaydet").textContent = "💾 Kaydet";
     formuDoldur(null);
     $("onizleme").style.display = "none";
     durum("");
@@ -365,7 +368,8 @@
       bilgi.onclick = function () {
         duzenlenenId = k.id;
         formuDoldur(k);
-        durum("Düzenleme modunda. Değiştirip Kaydet'e basın.");
+        $("btnKaydet").textContent = "💾 Değişikliği kaydet";
+        durum("Düzenleme modunda. Değiştirip kaydedin. Vazgeçmek için Formu temizle.");
         window.scrollTo(0, 0);
       };
       var sil = document.createElement("button");
