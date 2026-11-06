@@ -33,7 +33,6 @@
   .surum { display:block; white-space:nowrap; font-size:11px; font-weight:400; color:var(--soluk); margin-top:1px; }
   #kullanici { display:flex; align-items:center; gap:6px; min-width:0; }
   #kullanici[hidden] { display:none; }
-  #kullaniciAd { font-size:13px; background:var(--yesil-acik); color:var(--yesil-koyu); border-radius:999px; padding:5px 11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:112px; }
 
   main { max-width:560px; margin:0 auto; padding:14px 14px 4px; }
   .kart { background:var(--yuzey); border:1px solid var(--cizgi); border-radius:14px; padding:16px; margin-bottom:14px; }
@@ -91,12 +90,20 @@
   .etiket.ok { background:#dff3e6; color:var(--tamam); }
   .etiket.bekle { background:#fff1cc; color:#8a6100; }
 
-  #yonetim summary { list-style:none; display:flex; justify-content:space-between; align-items:center; font-size:16px; font-weight:650; cursor:pointer; }
+  #yonetim > summary { list-style:none; display:flex; justify-content:space-between; align-items:center; font-size:16px; font-weight:650; cursor:pointer; }
   #yonetim summary::-webkit-details-marker { display:none; }
   #yonetim summary::after { content:""; width:8px; height:8px; border-right:2px solid var(--soluk); border-bottom:2px solid var(--soluk); transform:rotate(45deg); transition:transform .15s; margin-right:4px; }
-  #yonetim[open] summary::after { transform:rotate(-135deg); }
-  #yonetim[open] summary { margin-bottom:6px; }
-  #yonetim h2.alt { margin-top:22px; padding-top:16px; border-top:1px solid var(--cizgi); }
+  #yonetim details[open] > summary::after, #yonetim[open] > summary::after { transform:rotate(-135deg); }
+  #yonetim[open] > summary { margin-bottom:8px; }
+  .ayar { border-top:1px solid var(--cizgi); }
+  .ayar > summary { list-style:none; display:flex; justify-content:space-between; align-items:center; padding:13px 2px; font-size:15px; font-weight:500; cursor:pointer; }
+  .ayar-ic { padding:2px 2px 14px; }
+  .ayar-ic .ipucu { margin:8px 0 0; }
+  .karsilama { background:var(--yesil); color:#fff; padding:10px 16px; }
+  .karsilama[hidden] { display:none; }
+  .karsilama .k-ad { font-size:15px; }
+  .karsilama .k-ad b { font-weight:650; }
+  .karsilama .k-okul { font-size:13px; opacity:.85; margin-top:1px; }
   @media (prefers-reduced-motion:reduce) { * { transition:none !important; } }
 </style>
 </head>
@@ -112,22 +119,40 @@
   </div>
 </div>
 <header>
-  <div class="marka"><img src="icon.svg" alt=""><div><b>Künye</b><span class="surum">v3.0 · Mehmet Karadeniz</span></div></div>
-  <div id="kullanici" hidden><span id="kullaniciAd"></span><button id="btnCikis" class="mini">Çıkış</button></div>
+  <div class="marka"><img src="icon.svg" alt=""><div><b>Künye</b><span class="surum">v3.1 · Mehmet Karadeniz</span></div></div>
+  <div id="kullanici" hidden><button id="btnCikis" class="mini">Çıkış</button></div>
 </header>
+<div id="karsilama" class="karsilama" hidden>
+  <div class="k-ad">Hoş geldin, <b id="kAd"></b></div>
+  <div class="k-okul" id="kOkul"></div>
+</div>
 <main>
 
   <details class="kart" id="yonetim" hidden>
     <summary>Ayarlar</summary>
-    <label>Çalıştığım okul (kitap listesi bu okulun)</label>
-    <select id="yoneticiOkul"></select>
-    <label>Gemini API anahtarı (tüm okullar bunu kullanır)</label>
-    <input type="password" id="apiKey" placeholder="AIza...">
-    <button id="btnAnahtarKaydet" class="ikincil">Anahtarı kaydet</button>
-    <div id="anahtarDurum" style="font-size:13px;margin-top:6px;"></div>
-    <h2 class="alt">Kullanıcılar</h2>
-    <div id="kullaniciListe">Yükleniyor…</div>
-    <button id="btnListeYenile" class="ikincil">Listeyi yenile</button>
+    <details class="ayar" name="ayar">
+      <summary>Çalıştığım okul</summary>
+      <div class="ayar-ic">
+        <select id="yoneticiOkul"></select>
+        <div class="ipucu">Kitap listesi, seçtiğiniz okula aittir.</div>
+      </div>
+    </details>
+    <details class="ayar" name="ayar">
+      <summary>Gemini API anahtarı</summary>
+      <div class="ayar-ic">
+        <input type="password" id="apiKey" placeholder="AIza...">
+        <button id="btnAnahtarKaydet" class="ikincil">Anahtarı kaydet</button>
+        <div id="anahtarDurum" style="font-size:13px;margin-top:8px;"></div>
+        <div class="ipucu">Tüm okullar bu anahtarı kullanır.</div>
+      </div>
+    </details>
+    <details class="ayar" name="ayar">
+      <summary>Kullanıcılar</summary>
+      <div class="ayar-ic">
+        <div id="kullaniciListe">Yükleniyor…</div>
+        <button id="btnListeYenile" class="ikincil">Listeyi yenile</button>
+      </div>
+    </details>
   </details>
 
   <div class="kart">
@@ -499,6 +524,9 @@ const el = (etiket, sinif, metin) => {
 
 window.kunyeAnahtar = "";
 
+const baslikYaz = (m) => String(m || "").trim().split(/\s+/).filter(Boolean)
+  .map((k) => k.charAt(0).toLocaleUpperCase("tr-TR") + k.slice(1)).join(" ");
+
 const kapi = (metin, ...dugmeler) => {
   $("kapi").hidden = false;
   $("kapiMetin").textContent = metin;
@@ -657,7 +685,9 @@ async function baslat(user) {
       if (k.exists()) window.kunyeAnahtar = k.data().anahtar || "";
     } catch (e) {}
     const chipYaz = () => {
-      $("kullaniciAd").textContent = (user.displayName || eposta).split(" ")[0] + (OKULLAR[profil.okul] ? " · " + OKULLAR[profil.okul] : "");
+      $("kAd").textContent = baslikYaz(user.displayName || eposta);
+      $("kOkul").textContent = profil.okul ? baslikYaz(profil.okul) : "Okul seçilmedi";
+      $("karsilama").hidden = false;
     };
     chipYaz();
     $("kullanici").hidden = false;
@@ -703,6 +733,7 @@ onAuthStateChanged(auth, (user) => {
     window.kunyeAnahtar = "";
     abonelikBitir();
     $("kullanici").hidden = true;
+    $("karsilama").hidden = true;
     $("yonetim").hidden = true;
     kapi("Devam etmek için Google hesabınızla giriş yapın.", "btnGiris");
     return;
