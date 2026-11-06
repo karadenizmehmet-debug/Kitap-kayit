@@ -6,7 +6,7 @@
 <meta name="author" content="Mehmet Karadeniz, 2026-2027">
 <meta name="copyright" content="Mehmet Karadeniz, 2026-2027">
 <meta name="theme-color" content="#1f4e79">
-<title>Kitap Kâtibi</title>
+<title>Künye</title>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   :root { --mavi:#1f4e79; --acik:#eef3f8; --kirmizi:#b3261e; --yesil:#1b7a3d; }
@@ -42,7 +42,7 @@
 </style>
 </head>
 <body>
-<header>📚 Kitap Kâtibi<span class="surum">v1.1 · Mehmet Karadeniz</span></header>
+<header>📚 Künye<span class="surum">v1.2 · Mehmet Karadeniz</span></header>
 <main>
 
   <div class="kart">
@@ -356,7 +356,7 @@
     var ws = XLSX.utils.json_to_sheet(satirlar, { header: ["ISBN", "Demirbas", "BaskiYili", "Baslik", "BasimSayisi", "Yayinevi"] });
     ws["!cols"] = [{ wch: 16 }, { wch: 10 }, { wch: 10 }, { wch: 36 }, { wch: 12 }, { wch: 22 }];
     var wb = XLSX.utils.book_new();
-    wb.Props = { Title: "Kitap Kâtibi", Author: "Mehmet Karadeniz, 2026-2027" };
+    wb.Props = { Title: "Künye", Author: "Mehmet Karadeniz, 2026-2027" };
     XLSX.utils.book_append_sheet(wb, ws, "Kitaplar");
     XLSX.writeFile(wb, "kitap-kayit-" + new Date().toISOString().slice(0, 10) + ".xlsx");
   };
