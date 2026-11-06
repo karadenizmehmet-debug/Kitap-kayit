@@ -59,6 +59,8 @@
   .etiket { display:inline-block; font-size:11px; font-weight:400; padding:2px 8px; border-radius:10px; margin-left:6px; }
   .etiket.ok { background:#dff3e6; color:#1b7a3d; }
   .etiket.bekle { background:#fff1cc; color:#8a6100; }
+  #yonetim summary { font-size:18px; font-weight:600; cursor:pointer; }
+  #yonetim[open] summary { margin-bottom:10px; }
 </style>
 </head>
 <body>
@@ -72,10 +74,23 @@
   </div>
 </div>
 <header>
-  <div>📚 Künye<span class="surum">v2.2 · Mehmet Karadeniz</span></div>
+  <div>📚 Künye<span class="surum">v2.3 · Mehmet Karadeniz</span></div>
   <div id="kullanici" hidden><span id="kullaniciAd"></span><button id="btnCikis" class="mini">Çıkış</button></div>
 </header>
 <main>
+
+  <details class="kart" id="yonetim" hidden>
+    <summary>⚙️ Ayarlar</summary>
+    <label>Çalıştığım okul (kitap listesi bu okulun)</label>
+    <select id="yoneticiOkul" style="width:100%;padding:8px;font-size:15px;margin-bottom:12px;border:1px solid #c8d1da;border-radius:8px;"></select>
+    <label>Gemini API anahtarı (tüm okullar bunu kullanır)</label>
+    <input type="password" id="apiKey" placeholder="AIza...">
+    <button id="btnAnahtarKaydet" class="ikincil">Anahtarı kaydet</button>
+    <div id="anahtarDurum" style="font-size:13px;margin-top:6px;"></div>
+    <h2 style="margin-top:18px;">Kullanıcılar</h2>
+    <div id="kullaniciListe">Yükleniyor…</div>
+    <button id="btnListeYenile" class="ikincil">Listeyi yenile</button>
+  </details>
 
   <div class="kart">
     <h2>1. Fotoğraf çek</h2>
@@ -109,18 +124,6 @@
     <button id="btnExcel">📥 Excel indir (.xlsx)</button>
   </div>
 
-  <div class="kart" id="yonetim" hidden>
-    <h2>🛠️ Yönetim</h2>
-    <label>Çalıştığım okul (kitap listesi bu okulun)</label>
-    <select id="yoneticiOkul" style="width:100%;padding:8px;font-size:15px;margin-bottom:12px;border:1px solid #c8d1da;border-radius:8px;"></select>
-    <label>Gemini API anahtarı (tüm okullar bunu kullanır)</label>
-    <input type="password" id="apiKey" placeholder="AIza...">
-    <button id="btnAnahtarKaydet" class="ikincil">Anahtarı kaydet</button>
-    <div id="anahtarDurum" style="font-size:13px;margin-top:6px;"></div>
-    <h2 style="margin-top:18px;">Kullanıcılar</h2>
-    <div id="kullaniciListe">Yükleniyor…</div>
-    <button id="btnListeYenile" class="ikincil">Listeyi yenile</button>
-  </div>
 
 </main>
 <footer>© Mehmet Karadeniz, 2026-2027</footer>
@@ -132,6 +135,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   var kayitlar = [];
+  var tumuGoster = false;
   var depo = null;
   window.kunyeListeVer = function (liste) { kayitlar = liste || []; listele(); };
   window.kunyeDepoAyarla = function (d) {
@@ -343,7 +347,9 @@
     $("sayi").textContent = liste.length;
     var kap = $("liste");
     kap.innerHTML = "";
-    liste.slice().reverse().forEach(function (k) {
+    var sirali = liste.slice().reverse();
+    var gorunen = tumuGoster ? sirali : sirali.slice(0, 3);
+    gorunen.forEach(function (k) {
       var satir = document.createElement("div");
       satir.className = "kayit";
       var bilgi = document.createElement("div");
@@ -375,6 +381,13 @@
       kap.appendChild(satir);
     });
     if (!liste.length) kap.textContent = "Henüz kayıt yok.";
+    if (liste.length > 3) {
+      var tg = document.createElement("button");
+      tg.className = "ikincil";
+      tg.textContent = tumuGoster ? "Son 3 kaydı göster" : "Tümünü göster (" + liste.length + ")";
+      tg.onclick = function () { tumuGoster = !tumuGoster; listele(); };
+      kap.appendChild(tg);
+    }
   }
 
   $("btnExcel").onclick = function () {
