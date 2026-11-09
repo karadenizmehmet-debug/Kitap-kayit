@@ -106,6 +106,13 @@
   .karsilama .k-ad { font-size:15px; }
   .karsilama .k-ad b { font-weight:650; }
   .karsilama .k-okul { font-size:13px; opacity:.85; margin-top:1px; }
+  .eksik { margin-top:12px; padding:12px; border:1px dashed var(--pirinc); border-radius:12px; background:#fbf6ea; }
+  .eksik[hidden] { display:none; }
+  .eksik .e-baslik { font-size:14px; font-weight:600; color:#7a5a17; }
+  .eksik .e-alt { font-size:13px; color:var(--soluk); margin-top:2px; }
+  .eksik .e-dugmeler { display:flex; gap:8px; }
+  .eksik .e-dugmeler label.dugme { flex:1; font-size:15px; padding:11px 8px; }
+  input.bos { border-color:var(--pirinc); background:#fffaf0; }
   @media (prefers-reduced-motion:reduce) { * { transition:none !important; } }
 </style>
 </head>
@@ -122,7 +129,7 @@
   </div>
 </div>
 <header>
-  <div class="marka"><img src="icon.svg" alt=""><div><b>Künye</b><span class="surum">v3.2 · Mehmet Karadeniz</span></div></div>
+  <div class="marka"><img src="icon.svg" alt=""><div><b>Künye</b><span class="surum">v3.3 · Mehmet Karadeniz</span></div></div>
   <div id="kullanici" hidden><button id="btnCikis" class="mini">Çıkış</button></div>
 </header>
 <div id="karsilama" class="karsilama" hidden>
@@ -167,6 +174,16 @@
     <img id="onizleme" alt="Önizleme">
     <div id="durum"></div>
     <div id="sure" style="font-size:13px;color:var(--soluk);"></div>
+    <div id="eksikKutu" class="eksik" hidden>
+      <div class="e-baslik">Eksik: <span id="eksikMetin"></span></div>
+      <div class="e-alt">Kitabın başka bir yerini çekin (arka kapak barkodu, iç kapak…). Yalnızca boş alanlar doldurulur.</div>
+      <div class="e-dugmeler">
+        <label class="dugme" for="dosyaEkKamera">Eksik bilgiyi çek</label>
+        <label class="dugme ikincil" for="dosyaEkGaleri">Galeriden ekle</label>
+      </div>
+      <input type="file" id="dosyaEkKamera" accept="image/*" capture="environment">
+      <input type="file" id="dosyaEkGaleri" accept="image/*">
+    </div>
   </div>
 
   <div class="kart">
@@ -247,9 +264,50 @@
   }
   $("isbn").addEventListener("input", isbnKontrol);
 
+  // Fotoğraftan okunan alanlar (demirbaş elle girilir, sayılmaz)
+  var OKUNAN = ["baslik","yayinevi","basim_no","basim_yili","isbn"];
+  var ETIKET = { baslik:"Kitap adı", yayinevi:"Yayınevi", basim_no:"Basım no", basim_yili:"Basım yılı", isbn:"ISBN" };
+
+  function eksikAlanlar() {
+    return OKUNAN.filter(function (a) {
+      var v = $(a).value.trim();
+      if (!v) return true;
+      return a === "isbn" && !isbnGecerli(v);
+    });
+  }
+  function eksikGuncelle() {
+    var eksik = eksikAlanlar();
+    var dolu = OKUNAN.some(function (a) { return $(a).value.trim(); });
+    OKUNAN.forEach(function (a) { $(a).classList.toggle("bos", dolu && eksik.indexOf(a) >= 0); });
+    $("eksikKutu").hidden = !(dolu && eksik.length);
+    $("eksikMetin").textContent = eksikEtiketleri().join(", ");
+  }
+  function eksikEtiketleri() {
+    return eksikAlanlar().map(function (a) {
+      return a === "isbn" && $(a).value.trim() ? "ISBN (hatalı)" : ETIKET[a];
+    });
+  }
+  ALANLAR.forEach(function (a) { $(a).addEventListener("input", eksikGuncelle); });
+
   function formuDoldur(o) {
     ALANLAR.forEach(function (a) { $(a).value = (o && o[a]) ? String(o[a]) : ""; });
     isbnKontrol();
+    eksikGuncelle();
+  }
+
+  // Ek fotoğraftan gelenle yalnızca boş (veya hatalı ISBN) alanları doldur
+  function eksikleriBirlestir(sonuc) {
+    var eklenen = [];
+    eksikAlanlar().forEach(function (a) {
+      var yeni = String(sonuc[a] || "").trim();
+      if (!yeni) return;
+      if (a === "isbn" && !isbnGecerli(yeni) && $(a).value.trim()) return;
+      $(a).value = yeni;
+      eklenen.push(ETIKET[a]);
+    });
+    isbnKontrol();
+    eksikGuncelle();
+    return eklenen;
   }
   function formuOku() {
     var o = {};
@@ -287,7 +345,16 @@
     "basim_no (yalnızca sayı, örn. 87), basim_yili (4 haneli), isbn (tire ve boşluk olmadan, sadece rakamlar; son hane X olabilir). " +
     "Sayfada olmayan veya okunamayan alanı boş string yap, tahmin etme. Türkçe karakterleri doğru yaz.";
 
-  async function oku(base64, model, dusun) {
+  function ekPrompt(eksik) {
+    return "Bu, aynı kitabın başka bir yerinin fotoğrafı (arka kapak, barkod, iç kapak, ön kapak veya sırt olabilir). " +
+      "Özellikle şu bilgileri ara: " + eksik.map(function (a) { return ETIKET[a]; }).join(", ") + ". " +
+      "ISBN çoğunlukla arka kapaktaki barkodun üstünde/altında yazar (978 veya 979 ile başlar). " +
+      "SADECE şu anahtarlarla bir JSON nesnesi döndür: baslik, yayinevi, basim_no (yalnızca sayı), basim_yili (4 haneli), " +
+      "isbn (tire ve boşluk olmadan, sadece rakamlar; son hane X olabilir). " +
+      "Fotoğrafta görünmeyen alanı boş string yap, tahmin etme. Türkçe karakterleri doğru yaz.";
+  }
+
+  async function oku(base64, model, dusun, istem) {
     var key = window.kunyeAnahtar || "";
     if (!key) { throw new Error("Gemini anahtarı yok. Yönetici anahtarı henüz girmemiş olabilir."); }
     var cevap = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent", {
@@ -295,7 +362,7 @@
       signal: AbortSignal.timeout(12000),
       headers: { "Content-Type": "application/json", "x-goog-api-key": key },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: PROMPT }, { inline_data: { mime_type: "image/jpeg", data: base64 } }] }],
+        contents: [{ parts: [{ text: istem || PROMPT }, { inline_data: { mime_type: "image/jpeg", data: base64 } }] }],
         generationConfig: Object.assign({ responseMimeType: "application/json", temperature: 0, maxOutputTokens: 4000 }, dusun ? { thinkingConfig: { thinkingLevel: "low" } } : {})
       })
     });
@@ -336,7 +403,7 @@
     return modelOnbellek;
   }
 
-  async function okuTekrar(b64) {
+  async function okuTekrar(b64, istem) {
     var modeller = await modelleriGetir();
     var sonHata;
     for (var tur = 0; tur < 2; tur++) {
@@ -344,9 +411,9 @@
         try {
           durum("Okunuyor (" + modeller[i] + ")…");
           try {
-            return await oku(b64, modeller[i], true);
+            return await oku(b64, modeller[i], true, istem);
           } catch (e0) {
-            if (/\(400\)/.test(e0.message)) return await oku(b64, modeller[i], false);
+            if (/\(400\)/.test(e0.message)) return await oku(b64, modeller[i], false, istem);
             throw e0;
           }
         } catch (e) {
@@ -383,8 +450,36 @@
     }
   }
 
+  async function ekFotoIsle(dosya) {
+    if (!dosya) return;
+    var eksik = eksikAlanlar();
+    if (!eksik.length) { durum("Eksik alan yok.", "ok"); return; }
+    durum("Ek fotoğraf okunuyor…");
+    var t0 = Date.now();
+    clearInterval(window.__zt);
+    window.__zt = setInterval(function () { $("sure").textContent = "⏱ " + Math.round((Date.now() - t0) / 1000) + " sn"; }, 500);
+    try {
+      var b64 = await kucult(dosya);
+      var sonuc = await okuTekrar(b64, ekPrompt(eksik));
+      sonuc.isbn = String(sonuc.isbn || "").replace(/[^0-9Xx]/g, "");
+      clearInterval(window.__zt);
+      var eklenen = eksikleriBirlestir(sonuc);
+      var kalan = eksikEtiketleri();
+      if (!eklenen.length) {
+        durum("Bu fotoğrafta eksik bilgi bulunamadı. Başka bir yerini deneyin veya elle yazın.", "uyari");
+      } else {
+        durum("Eklendi: " + eklenen.join(", ") + "." + (kalan.length ? " Hâlâ eksik: " + kalan.join(", ") + "." : " Tüm bilgiler tamam, kontrol edip Kaydet'e basın."), "ok");
+      }
+    } catch (e) {
+      clearInterval(window.__zt);
+      durum(e.message, "uyari");
+    }
+  }
+
   $("dosyaKamera").onchange = function (e) { fotoIsle(e.target.files[0]); e.target.value = ""; };
   $("dosyaGaleri").onchange = function (e) { fotoIsle(e.target.files[0]); e.target.value = ""; };
+  $("dosyaEkKamera").onchange = function (e) { ekFotoIsle(e.target.files[0]); e.target.value = ""; };
+  $("dosyaEkGaleri").onchange = function (e) { ekFotoIsle(e.target.files[0]); e.target.value = ""; };
 
   $("btnKaydet").onclick = function () {
     if (!depo) { durum("Okul listesi hazır değil. Giriş yapın ve okul atanmasını bekleyin.", "uyari"); return; }
