@@ -159,7 +159,7 @@
   </div>
 </div>
 <header>
-  <div class="marka"><img src="icon.svg" alt=""><div><b>Künye <span style="font-size:11px;font-weight:600;color:var(--soluk)">v3.7</span></b><span class="surum">Mehmet Karadeniz</span></div></div>
+  <div class="marka"><img src="icon.svg" alt=""><div><b>Künye <span style="font-size:11px;font-weight:600;color:var(--soluk)">v3.8</span></b><span class="surum">Mehmet Karadeniz</span></div></div>
   <div class="sag"><button type="button" class="paylasBtn"></button><button type="button" class="tema-dugme" aria-label="Koyu moda geç"></button><div id="kullanici" hidden><button id="btnCikis" class="mini">Çıkış</button></div></div>
 </header>
 <div id="karsilama" class="karsilama" hidden>
@@ -218,7 +218,7 @@
 
   <div class="kart">
     <h2>Kitap bilgileri</h2>
-    <label>Demirbaş no (elle yazın)</label><input type="text" id="demirbas" inputmode="numeric">
+    <label>Demirbaş no (otomatik, değiştirilebilir)</label><input type="text" id="demirbas" inputmode="numeric">
     <label>Kitap adı</label><input type="text" id="baslik">
     <label>Yayınevi</label><input type="text" id="yayinevi">
     <div class="satir">
@@ -237,6 +237,7 @@
     <div id="liste"></div>
     <button id="btnExcel">Yeni kayıtları indir (.xlsx)</button>
     <button id="btnExcelHepsi" class="ikincil">Tam kayıtların hepsini indir (.xlsx)</button>
+    <button id="btnDemirbasVer" class="ikincil" hidden></button>
   </div>
 
   <div class="kart">
@@ -286,7 +287,26 @@
   var kayitlar = [];
   var tumuGoster = false;
   var depo = null;
-  window.kunyeListeVer = function (liste) { kayitlar = liste || []; listele(); };
+  window.kunyeListeVer = function (liste) { kayitlar = liste || []; listele(); oneriGuncelle(); };
+
+  // Demirbaş: okuldaki en büyük sayısal numara + 1
+  var sonKullanilan = 0, otoDemirbas = "";
+  function enBuyukDemirbas() {
+    var m = sonKullanilan;
+    kayitlar.forEach(function (k) {
+      var n = /^\d+$/.test(String(k.demirbas || "").trim()) ? parseInt(k.demirbas, 10) : 0;
+      if (n > m) m = n;
+    });
+    return m;
+  }
+  function sonrakiDemirbas() { return enBuyukDemirbas() + 1; }
+  // Yeni kayıt formunda alan boşsa (veya önceki öneri duruyorsa) sıradaki numarayı yaz
+  function oneriGuncelle() {
+    var el = $("demirbas");
+    if (!el || duzenlenenId) return;
+    var v = el.value.trim();
+    if (v === "" || v === otoDemirbas) { otoDemirbas = String(sonrakiDemirbas()); el.value = otoDemirbas; }
+  }
   window.kunyeDepoAyarla = function (d) {
     depo = d;
     if (!d) { kayitlar = []; listele(); }
@@ -356,6 +376,7 @@
 
   function formuDoldur(o) {
     ALANLAR.forEach(function (a) { $(a).value = (o && o[a]) ? String(o[a]) : ""; });
+    if (!o) { otoDemirbas = ""; oneriGuncelle(); }
     isbnKontrol();
     eksikGuncelle();
   }
@@ -554,6 +575,8 @@
     if (!duzenleme && o.isbn && kayitlar.some(function (k) { return k.isbn === o.isbn; })) {
       if (!confirm("Bu ISBN okulda zaten kayıtlı. Yine de eklensin mi?")) return;
     }
+    if (!duzenleme && !o.demirbas) o.demirbas = String(sonrakiDemirbas());
+    if (/^\d+$/.test(o.demirbas)) sonKullanilan = Math.max(sonKullanilan, parseInt(o.demirbas, 10));
     var id = duzenlenenId || (Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
     depo.kaydet(id, o, duzenleme).catch(hataGoster);
     duzenlenenId = null;
@@ -656,6 +679,9 @@
     grupCiz(tamKayitlar(), "liste", "sayi", false);
     grupCiz(eksikKayitlar(), "listeEksik", "sayiEksik", true);
     $("btnExcel").textContent = "Yeni kayıtları indir (" + yeniKayitlar().length + ")";
+    var bn = kayitlar.filter(function (k) { return !String(k.demirbas || "").trim(); }).length;
+    $("btnDemirbasVer").hidden = !bn;
+    $("btnDemirbasVer").textContent = "Demirbaşsız " + bn + " kayda numara ver";
   }
 
   function excelIndir(liste, eksikMi, bos) {
@@ -690,6 +716,18 @@
         .then(function () { durum(liste.length + " kitap aktarıldı olarak işaretlendi.", "ok"); })
         .catch(hataGoster);
     }, 700);
+  };
+  $("btnDemirbasVer").onclick = function () {
+    if (!depo) return;
+    var bos = kayitlar.filter(function (k) { return !String(k.demirbas || "").trim(); });
+    if (!bos.length) return;
+    var ilk = sonrakiDemirbas();
+    if (!confirm(bos.length + " kayda ekleme sırasıyla " + ilk + " ile " + (ilk + bos.length - 1) + " arasında demirbaş no verilsin mi?")) return;
+    var cift = bos.map(function (k, i) { return [k.id, String(ilk + i)]; });
+    sonKullanilan = Math.max(sonKullanilan, ilk + bos.length - 1);
+    depo.demirbasVer(cift)
+      .then(function () { durum(bos.length + " kayda demirbaş no verildi.", "ok"); })
+      .catch(hataGoster);
   };
   $("btnExcelHepsi").onclick = function () { excelIndir(tamKayitlar(), false); };
   $("btnExcelEksik").onclick = function () { excelIndir(eksikKayitlar(), true); };
@@ -807,6 +845,7 @@ function aboneOl(okul, user) {
       if (!duzenleme) { veri.ekleyen = eposta; veri.tarih = new Date().toISOString().slice(0, 10); veri.ts = Date.now(); }
       return setDoc(doc(db, "kitaplar", id), veri, { merge: true });
     },
+    demirbasVer: (cift) => Promise.all(cift.map((c) => setDoc(doc(db, "kitaplar", c[0]), { demirbas: c[1] }, { merge: true }))),
     aktarimIsaretle: (idler, tarih) => Promise.all(idler.map((id) => setDoc(doc(db, "kitaplar", id), { aktarim: tarih }, { merge: true }))),
     sil: (id) => deleteDoc(doc(db, "kitaplar", id))
   });
