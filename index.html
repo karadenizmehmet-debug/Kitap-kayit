@@ -134,15 +134,17 @@
   :root[data-theme="dark"] input.bos { background:#2a2415; }
   :root[data-theme="dark"] input:focus, :root[data-theme="dark"] select:focus { box-shadow:0 0 0 3px rgba(79,165,143,.3); }
   .sag { display:flex; align-items:center; gap:8px; }
-  button.tema-dugme { width:40px; height:40px; min-height:0; margin:0; padding:0; display:flex; align-items:center; justify-content:center; background:transparent; color:var(--soluk); border:1px solid var(--cizgi); border-radius:12px; }
-  button.tema-dugme:hover { background:var(--yesil-acik); }
-  button.tema-dugme svg { width:20px; height:20px; display:block; }
+  button.tema-dugme, button.paylasBtn { width:40px; height:40px; min-height:0; margin:0; padding:0; display:flex; align-items:center; justify-content:center; background:transparent; color:var(--soluk); border:1px solid var(--cizgi); border-radius:12px; }
+  button.tema-dugme:hover, button.paylasBtn:hover { background:var(--yesil-acik); }
+  button.tema-dugme svg, button.paylasBtn svg { width:20px; height:20px; display:block; }
   .kapi .tema-dugme { position:absolute; top:calc(12px + env(safe-area-inset-top)); right:12px; }
+  .kapi .paylasBtn { position:absolute; top:calc(12px + env(safe-area-inset-top)); right:60px; }
   @media (prefers-reduced-motion:reduce) { * { transition:none !important; } }
 </style>
 </head>
 <body>
 <div id="kapi" class="kapi">
+  <button type="button" class="paylasBtn"></button>
   <button type="button" class="tema-dugme" aria-label="Koyu moda geç"></button>
   <div class="kapi-kart">
     <img src="icon.svg" alt="">
@@ -155,8 +157,8 @@
   </div>
 </div>
 <header>
-  <div class="marka"><img src="icon.svg" alt=""><div><b>Künye <span style="font-size:11px;font-weight:600;color:var(--soluk)">v3.5</span></b><span class="surum">Mehmet Karadeniz</span></div></div>
-  <div class="sag"><button type="button" class="tema-dugme" aria-label="Koyu moda geç"></button><div id="kullanici" hidden><button id="btnCikis" class="mini">Çıkış</button></div></div>
+  <div class="marka"><img src="icon.svg" alt=""><div><b>Künye <span style="font-size:11px;font-weight:600;color:var(--soluk)">v3.6</span></b><span class="surum">Mehmet Karadeniz</span></div></div>
+  <div class="sag"><button type="button" class="paylasBtn"></button><button type="button" class="tema-dugme" aria-label="Koyu moda geç"></button><div id="kullanici" hidden><button id="btnCikis" class="mini">Çıkış</button></div></div>
 </header>
 <div id="karsilama" class="karsilama" hidden>
   <div class="k-ad">Hoş geldin, <b id="kAd"></b></div>
@@ -960,6 +962,29 @@ $("btnAnahtarKaydet").onclick = async () => {
     $("anahtarDurum").textContent = "Kaydedilemedi: " + hataMetni(e);
   }
 };
+</script>
+<script>
+// Adres paylaş düğmesi: önce sistem paylaşımı, olmazsa adresi panoya kopyalar. Mehmet Karadeniz, 2026-2027
+(function () {
+  var SH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 10.5l6.8-4M8.6 13.5l6.8 4"/></svg>';
+  var OK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>';
+  function adres() { return location.href.split(/[?#]/)[0]; }
+  function kopyala(u) {
+    try { var t = document.createElement("textarea"); t.value = u; t.style.cssText = "position:fixed;opacity:0;top:0;left:0"; document.body.appendChild(t); t.select(); var ok = document.execCommand("copy"); document.body.removeChild(t); return ok; } catch (e) { return false; }
+  }
+  function tamam(b) { b.innerHTML = OK; b.title = "Adres kopyalandı"; setTimeout(function () { b.innerHTML = SH; b.title = "Adresi paylaş"; }, 1800); }
+  function paylas(b) {
+    var u = adres();
+    if (navigator.share) { navigator.share({ title: document.title, url: u }).catch(function () {}); return; }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(u).then(function () { tamam(b); }, function () { if (kopyala(u)) tamam(b); });
+    else if (kopyala(u)) tamam(b);
+  }
+  var bs = document.querySelectorAll(".paylasBtn");
+  for (var i = 0; i < bs.length; i++) {
+    bs[i].innerHTML = SH; bs[i].title = "Adresi paylaş"; bs[i].setAttribute("aria-label", "Adresi paylaş");
+    bs[i].addEventListener("click", function () { paylas(this); });
+  }
+})();
 </script>
 </body>
 </html>
