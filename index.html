@@ -159,7 +159,7 @@
   </div>
 </div>
 <header>
-  <div class="marka"><img src="icon.svg" alt=""><div><b>Künye <span style="font-size:11px;font-weight:600;color:var(--soluk)">v3.9.1</span></b><span class="surum">Mehmet Karadeniz</span></div></div>
+  <div class="marka"><img src="icon.svg" alt=""><div><b>Künye <span style="font-size:11px;font-weight:600;color:var(--soluk)">v3.9.2</span></b><span class="surum">Mehmet Karadeniz</span></div></div>
   <div class="sag"><button type="button" class="paylasBtn"></button><button type="button" class="tema-dugme" aria-label="Koyu moda geç"></button><div id="kullanici" hidden><button id="btnCikis" class="mini">Çıkış</button></div></div>
 </header>
 <div id="karsilama" class="karsilama" hidden>
@@ -862,20 +862,22 @@ function aboneOl(okul, user) {
   const q = query(collection(db, "kitaplar"), where("okul", "==", okul));
   abonelik = onSnapshot(q, (qs) => {
     const liste = [];
-    qs.forEach((d) => liste.push(Object.assign({ id: d.id }, d.data())));
+    qs.forEach((d) => { if (d.id.indexOf("_sayac_") !== 0) liste.push(Object.assign({ id: d.id }, d.data())); });
     liste.sort((a, b) => (a.ts || 0) - (b.ts || 0));
     window.kunyeListeVer(liste);
   }, (e) => {
     $("durum").textContent = "Liste alınamadı: " + hataMetni(e);
     $("durum").className = "uyari";
   });
+  // Sayaç belgesi kitaplar koleksiyonunda durur (mevcut okul kuralları geçerli, ayrı kural gerekmez); listeden süzülür
+  const sayacRef = (o) => doc(db, "kitaplar", "_sayac_" + o.replace(/[\/\s]+/g, "_"));
   window.kunyeDepoAyarla({
     kaydet: async (id, o, duzenleme, sayacGerek, otomatik, taban, bosIdler) => {
       const veri = Object.assign({}, o, { okul: okul });
       if (!duzenleme) { veri.ekleyen = eposta; veri.tarih = new Date().toISOString().slice(0, 10); veri.ts = Date.now(); }
       if (!sayacGerek) { await setDoc(doc(db, "kitaplar", id), veri, { merge: true }); return { no: veri.demirbas }; }
       // Okul sayacı: aynı anda iki kayıt aynı numarayı alamaz (Firestore transaction yeniden dener)
-      const sref = doc(db, "sayaclar", okul);
+      const sref = sayacRef(okul);
       return runTransaction(db, async (tx) => {
         const snap = await tx.get(sref);
         const sayac = snap.exists() ? (Number(snap.data().demirbas) || 0) : 0;
@@ -890,19 +892,19 @@ function aboneOl(okul, user) {
         const no = otomatik ? String(baz + bekleyen.length + 1) : String(veri.demirbas || "");
         veri.demirbas = no;
         const yeni = /^\d+$/.test(no) ? Math.max(baz + bekleyen.length, parseInt(no, 10)) : baz + bekleyen.length;
-        tx.set(sref, { demirbas: yeni }, { merge: true });
+        tx.set(sref, { okul: okul, sayac: true, demirbas: yeni }, { merge: true });
         tx.set(doc(db, "kitaplar", id), veri, { merge: true });
         return { no: no, eskiBas: baz + 1, eskiAdet: bekleyen.length };
       });
     },
     demirbasVer: (idler, taban) => {
-      const sref = doc(db, "sayaclar", okul);
+      const sref = sayacRef(okul);
       return runTransaction(db, async (tx) => {
         const snap = await tx.get(sref);
         const sayac = snap.exists() ? (Number(snap.data().demirbas) || 0) : 0;
         const baz = Math.max(sayac, taban || 0);
         idler.forEach((kid, i) => tx.set(doc(db, "kitaplar", kid), { demirbas: String(baz + 1 + i) }, { merge: true }));
-        tx.set(sref, { demirbas: baz + idler.length }, { merge: true });
+        tx.set(sref, { okul: okul, sayac: true, demirbas: baz + idler.length }, { merge: true });
         return baz + 1;
       });
     },
