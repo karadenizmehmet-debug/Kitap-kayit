@@ -70,6 +70,9 @@
   .kayit .bilgi { flex:1; min-width:0; cursor:pointer; }
   .kayit .ad { font-family:var(--serif); font-weight:700; font-size:16px; line-height:1.25; }
   .kayit .alt { font-size:12.5px; color:var(--soluk); margin-top:2px; }
+  .kayit.eksik-kayit { border-left-color:var(--pirinc); }
+  .kayit .eksik-not { font-size:12.5px; color:#7a5a17; margin-top:2px; }
+  :root[data-theme="dark"] .kayit .eksik-not { color:#e0bd70; }
   .ipucu { font-size:13px; color:var(--soluk); margin:-6px 0 8px; }
 
   footer { text-align:center; font-size:12px; color:var(--soluk); padding:10px 14px 22px; }
@@ -152,7 +155,7 @@
   </div>
 </div>
 <header>
-  <div class="marka"><img src="icon.svg" alt=""><div><b>Künye <span style="font-size:11px;font-weight:600;color:var(--soluk)">v3.4</span></b><span class="surum">Mehmet Karadeniz</span></div></div>
+  <div class="marka"><img src="icon.svg" alt=""><div><b>Künye <span style="font-size:11px;font-weight:600;color:var(--soluk)">v3.5</span></b><span class="surum">Mehmet Karadeniz</span></div></div>
   <div class="sag"><button type="button" class="tema-dugme" aria-label="Koyu moda geç"></button><div id="kullanici" hidden><button id="btnCikis" class="mini">Çıkış</button></div></div>
 </header>
 <div id="karsilama" class="karsilama" hidden>
@@ -225,10 +228,17 @@
   </div>
 
   <div class="kart">
-    <h2>Kayıtlar (<span id="sayi">0</span>)</h2>
-    <div class="ipucu">Düzeltmek için kitabın üstüne dokunun.</div>
+    <h2>Tam kayıtlar (<span id="sayi">0</span>)</h2>
+    <div class="ipucu">Tüm bilgileri dolu kitaplar. Düzeltmek için kitabın üstüne dokunun.</div>
     <div id="liste"></div>
-    <button id="btnExcel">Excel olarak indir (.xlsx)</button>
+    <button id="btnExcel">Tam kayıtları indir (.xlsx)</button>
+  </div>
+
+  <div class="kart">
+    <h2>Eksik kayıtlar (<span id="sayiEksik">0</span>)</h2>
+    <div class="ipucu">Bilgisi eksik veya ISBN'i hatalı kitaplar. Tamamlamak için kitabın üstüne dokunun; tamamlanınca üstteki listeye geçer.</div>
+    <div id="listeEksik"></div>
+    <button id="btnExcelEksik">Eksik kayıtları indir (.xlsx)</button>
   </div>
 
 
@@ -556,16 +566,31 @@
     durum("");
   };
 
-  function listele() {
-    var liste = kayitlar;
-    $("sayi").textContent = liste.length;
-    var kap = $("liste");
+  // Kayıttaki eksik alanların etiketleri (demirbaş sayılmaz; hatalı ISBN eksik sayılır)
+  function kayitEksikleri(k) {
+    var e = [];
+    OKUNAN.forEach(function (a) {
+      var v = String(k[a] || "").trim();
+      if (!v) e.push(ETIKET[a]);
+      else if (a === "isbn" && !isbnGecerli(v)) e.push("ISBN (hatalı)");
+    });
+    return e;
+  }
+  function tamKayitlar() { return kayitlar.filter(function (k) { return !kayitEksikleri(k).length; }); }
+  function eksikKayitlar() { return kayitlar.filter(function (k) { return kayitEksikleri(k).length; }); }
+
+  var tumuGosterEksik = false;
+
+  function grupCiz(liste, kapId, sayiId, eksikMi) {
+    $(sayiId).textContent = liste.length;
+    var kap = $(kapId);
     kap.innerHTML = "";
+    var acik = eksikMi ? tumuGosterEksik : tumuGoster;
     var sirali = liste.slice().reverse();
-    var gorunen = tumuGoster ? sirali : sirali.slice(0, 3);
+    var gorunen = acik ? sirali : sirali.slice(0, 3);
     gorunen.forEach(function (k) {
       var satir = document.createElement("div");
-      satir.className = "kayit";
+      satir.className = eksikMi ? "kayit eksik-kayit" : "kayit";
       var bilgi = document.createElement("div");
       bilgi.className = "bilgi";
       var ad = document.createElement("div");
@@ -576,6 +601,12 @@
       alt.textContent = [k.demirbas ? "Dmr " + k.demirbas : "", k.yayinevi, k.basim_no ? k.basim_no + ". basım" : "", k.basim_yili].filter(Boolean).join(" · ");
       bilgi.appendChild(ad);
       bilgi.appendChild(alt);
+      if (eksikMi) {
+        var not = document.createElement("div");
+        not.className = "eksik-not";
+        not.textContent = "Eksik: " + kayitEksikleri(k).join(", ");
+        bilgi.appendChild(not);
+      }
       bilgi.onclick = function () {
         duzenlenenId = k.id;
         formuDoldur(k);
@@ -595,33 +626,47 @@
       satir.appendChild(sil);
       kap.appendChild(satir);
     });
-    if (!liste.length) kap.textContent = "Henüz kayıt yok.";
+    if (!liste.length) kap.textContent = eksikMi ? "Eksik kayıt yok." : "Henüz tam kayıt yok.";
     if (liste.length > 3) {
       var tg = document.createElement("button");
       tg.className = "ikincil";
-      tg.textContent = tumuGoster ? "Son 3 kaydı göster" : "Tümünü göster (" + liste.length + ")";
-      tg.onclick = function () { tumuGoster = !tumuGoster; listele(); };
+      tg.textContent = acik ? "Son 3 kaydı göster" : "Tümünü göster (" + liste.length + ")";
+      tg.onclick = function () {
+        if (eksikMi) tumuGosterEksik = !tumuGosterEksik; else tumuGoster = !tumuGoster;
+        listele();
+      };
       kap.appendChild(tg);
     }
   }
 
-  $("btnExcel").onclick = function () {
-    var liste = kayitlar;
-    if (!liste.length) { durum("İndirilecek kayıt yok.", "uyari"); return; }
+  function listele() {
+    grupCiz(tamKayitlar(), "liste", "sayi", false);
+    grupCiz(eksikKayitlar(), "listeEksik", "sayiEksik", true);
+  }
+
+  function excelIndir(liste, eksikMi) {
+    if (!liste.length) { durum(eksikMi ? "İndirilecek eksik kayıt yok." : "İndirilecek tam kayıt yok.", "uyari"); return; }
+    var basliklar = ["ISBN", "Demirbas", "BaskiYili", "Baslik", "BasimSayisi", "Yayinevi"];
+    var genislik = [{ wch: 16 }, { wch: 10 }, { wch: 10 }, { wch: 36 }, { wch: 12 }, { wch: 22 }];
+    if (eksikMi) { basliklar.push("Eksik"); genislik.push({ wch: 28 }); }
     var satirlar = liste.map(function (k) {
-      return {
+      var s = {
         "ISBN": k.isbn || "", "Demirbas": k.demirbas || "", "BaskiYili": k.basim_yili || "",
         "Baslik": k.baslik || "", "BasimSayisi": k.basim_no ? k.basim_no + ". basım" : "",
         "Yayinevi": k.yayinevi || ""
       };
+      if (eksikMi) s["Eksik"] = kayitEksikleri(k).join(", ");
+      return s;
     });
-    var ws = XLSX.utils.json_to_sheet(satirlar, { header: ["ISBN", "Demirbas", "BaskiYili", "Baslik", "BasimSayisi", "Yayinevi"] });
-    ws["!cols"] = [{ wch: 16 }, { wch: 10 }, { wch: 10 }, { wch: 36 }, { wch: 12 }, { wch: 22 }];
+    var ws = XLSX.utils.json_to_sheet(satirlar, { header: basliklar });
+    ws["!cols"] = genislik;
     var wb = XLSX.utils.book_new();
-    wb.Props = { Title: "Künye", Author: "Mehmet Karadeniz, 2026-2027" };
-    XLSX.utils.book_append_sheet(wb, ws, "Kitaplar");
-    XLSX.writeFile(wb, "kitap-kayit-" + new Date().toISOString().slice(0, 10) + ".xlsx");
-  };
+    wb.Props = { Title: eksikMi ? "Künye - Eksik kayıtlar" : "Künye", Author: "Mehmet Karadeniz, 2026-2027" };
+    XLSX.utils.book_append_sheet(wb, ws, eksikMi ? "Eksikler" : "Kitaplar");
+    XLSX.writeFile(wb, (eksikMi ? "kitap-kayit-eksik-" : "kitap-kayit-tam-") + new Date().toISOString().slice(0, 10) + ".xlsx");
+  }
+  $("btnExcel").onclick = function () { excelIndir(tamKayitlar(), false); };
+  $("btnExcelEksik").onclick = function () { excelIndir(eksikKayitlar(), true); };
 
   listele();
 })();
