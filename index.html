@@ -159,7 +159,7 @@
   </div>
 </div>
 <header>
-  <div class="marka"><img src="icon.svg" alt=""><div><b>Künye <span style="font-size:11px;font-weight:600;color:var(--soluk)">v3.9</span></b><span class="surum">Mehmet Karadeniz</span></div></div>
+  <div class="marka"><img src="icon.svg" alt=""><div><b>Künye <span style="font-size:11px;font-weight:600;color:var(--soluk)">v3.9.1</span></b><span class="surum">Mehmet Karadeniz</span></div></div>
   <div class="sag"><button type="button" class="paylasBtn"></button><button type="button" class="tema-dugme" aria-label="Koyu moda geç"></button><div id="kullanici" hidden><button id="btnCikis" class="mini">Çıkış</button></div></div>
 </header>
 <div id="karsilama" class="karsilama" hidden>
@@ -299,7 +299,9 @@
     });
     return m;
   }
-  function sonrakiDemirbas() { return enBuyukDemirbas() + 1; }
+  function demirbassizlar() { return kayitlar.filter(function (k) { return !String(k.demirbas || "").trim(); }); }
+  // Önce eski demirbaşsız kayıtlar numaralanır, yeni kayıt onlardan sonra gelir
+  function sonrakiDemirbas() { return enBuyukDemirbas() + demirbassizlar().length + 1; }
   // Yeni kayıt formunda alan boşsa (veya önceki öneri duruyorsa) sıradaki numarayı yaz
   function oneriGuncelle() {
     var el = $("demirbas");
@@ -586,9 +588,12 @@
     var id = duzenlenenId || (Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
     var dugme = $("btnKaydet"), yazi = dugme.textContent;
     dugme.disabled = true; dugme.textContent = "Kaydediliyor…";
-    var no;
+    var no, eskiMesaj = "";
     try {
-      no = await depo.kaydet(id, o, duzenleme, sayacGerek, otomatik, enBuyukDemirbas());
+      var bosIdler = otomatik ? demirbassizlar().map(function (k) { return k.id; }) : [];
+      var sonuc = await depo.kaydet(id, o, duzenleme, sayacGerek, otomatik, enBuyukDemirbas(), bosIdler);
+      no = sonuc.no;
+      if (sonuc.eskiAdet) eskiMesaj = " Eski " + sonuc.eskiAdet + " kayda " + sonuc.eskiBas + " - " + (sonuc.eskiBas + sonuc.eskiAdet - 1) + " arası no verildi.";
     } catch (e) {
       dugme.disabled = false; dugme.textContent = yazi;
       if (e && (e.code === "unavailable" || /offline/i.test(e.message || ""))) durum("Demirbaş numarası için internet gerekli. Bağlantıyı kontrol edip tekrar Kaydet'e basın. Form olduğu gibi duruyor.", "uyari");
@@ -601,7 +606,7 @@
     dugme.textContent = "Kaydet";
     formuDoldur(null);
     $("onizleme").style.display = "none";
-    durum("Kaydedildi." + (no ? " Demirbaş no: " + no : ""), "ok");
+    durum("Kaydedildi." + (no ? " Demirbaş no: " + no + "." : "") + eskiMesaj, "ok");
   };
 
   $("btnTemizle").onclick = function () {
@@ -740,7 +745,7 @@
     if (!depo) return;
     var bos = kayitlar.filter(function (k) { return !String(k.demirbas || "").trim(); });
     if (!bos.length) return;
-    var ilk = sonrakiDemirbas();
+    var ilk = enBuyukDemirbas() + 1;
     if (!confirm(bos.length + " kayda ekleme sırasıyla " + ilk + " ile " + (ilk + bos.length - 1) + " arasında demirbaş no verilsin mi?")) return;
     var dugme = $("btnDemirbasVer"); dugme.disabled = true;
     depo.demirbasVer(bos.map(function (k) { return k.id; }), enBuyukDemirbas())
@@ -865,22 +870,29 @@ function aboneOl(okul, user) {
     $("durum").className = "uyari";
   });
   window.kunyeDepoAyarla({
-    kaydet: async (id, o, duzenleme, sayacGerek, otomatik, taban) => {
+    kaydet: async (id, o, duzenleme, sayacGerek, otomatik, taban, bosIdler) => {
       const veri = Object.assign({}, o, { okul: okul });
       if (!duzenleme) { veri.ekleyen = eposta; veri.tarih = new Date().toISOString().slice(0, 10); veri.ts = Date.now(); }
-      if (!sayacGerek) { await setDoc(doc(db, "kitaplar", id), veri, { merge: true }); return veri.demirbas; }
+      if (!sayacGerek) { await setDoc(doc(db, "kitaplar", id), veri, { merge: true }); return { no: veri.demirbas }; }
       // Okul sayacı: aynı anda iki kayıt aynı numarayı alamaz (Firestore transaction yeniden dener)
       const sref = doc(db, "sayaclar", okul);
       return runTransaction(db, async (tx) => {
         const snap = await tx.get(sref);
         const sayac = snap.exists() ? (Number(snap.data().demirbas) || 0) : 0;
         const baz = Math.max(sayac, taban || 0);
-        const no = otomatik ? String(baz + 1) : String(veri.demirbas || "");
+        // Eski demirbaşsız kayıtlar (ekleme sırasıyla) yeni kayıttan önce numaralanır
+        const bekleyen = [];
+        for (const kid of (otomatik ? (bosIdler || []) : [])) {
+          const ks = await tx.get(doc(db, "kitaplar", kid));
+          if (ks.exists() && !String(ks.data().demirbas || "").trim()) bekleyen.push(kid);
+        }
+        bekleyen.forEach((kid, i) => tx.set(doc(db, "kitaplar", kid), { demirbas: String(baz + 1 + i) }, { merge: true }));
+        const no = otomatik ? String(baz + bekleyen.length + 1) : String(veri.demirbas || "");
         veri.demirbas = no;
-        const yeni = /^\d+$/.test(no) ? Math.max(baz, parseInt(no, 10)) : baz;
+        const yeni = /^\d+$/.test(no) ? Math.max(baz + bekleyen.length, parseInt(no, 10)) : baz + bekleyen.length;
         tx.set(sref, { demirbas: yeni }, { merge: true });
         tx.set(doc(db, "kitaplar", id), veri, { merge: true });
-        return no;
+        return { no: no, eskiBas: baz + 1, eskiAdet: bekleyen.length };
       });
     },
     demirbasVer: (idler, taban) => {
