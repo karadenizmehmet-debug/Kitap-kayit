@@ -159,7 +159,7 @@
   </div>
 </div>
 <header>
-  <div class="marka"><img src="icon.svg" alt=""><div><b>Künye <span style="font-size:11px;font-weight:600;color:var(--soluk)">v3.8</span></b><span class="surum">Mehmet Karadeniz</span></div></div>
+  <div class="marka"><img src="icon.svg" alt=""><div><b>Künye <span style="font-size:11px;font-weight:600;color:var(--soluk)">v3.9</span></b><span class="surum">Mehmet Karadeniz</span></div></div>
   <div class="sag"><button type="button" class="paylasBtn"></button><button type="button" class="tema-dugme" aria-label="Koyu moda geç"></button><div id="kullanici" hidden><button id="btnCikis" class="mini">Çıkış</button></div></div>
 </header>
 <div id="karsilama" class="karsilama" hidden>
@@ -290,7 +290,7 @@
   window.kunyeListeVer = function (liste) { kayitlar = liste || []; listele(); oneriGuncelle(); };
 
   // Demirbaş: okuldaki en büyük sayısal numara + 1
-  var sonKullanilan = 0, otoDemirbas = "";
+  var sonKullanilan = 0, otoDemirbas = "", duzenlenenDemirbas = "";
   function enBuyukDemirbas() {
     var m = sonKullanilan;
     kayitlar.forEach(function (k) {
@@ -567,7 +567,7 @@
   $("dosyaEkKamera").onchange = function (e) { ekFotoIsle(e.target.files[0]); e.target.value = ""; };
   $("dosyaEkGaleri").onchange = function (e) { ekFotoIsle(e.target.files[0]); e.target.value = ""; };
 
-  $("btnKaydet").onclick = function () {
+  $("btnKaydet").onclick = async function () {
     if (!depo) { durum("Okul listesi hazır değil. Giriş yapın ve okul atanmasını bekleyin.", "uyari"); return; }
     var o = formuOku();
     if (!o.baslik && !o.isbn) { durum("En az kitap adı veya ISBN gerekli.", "uyari"); return; }
@@ -575,19 +575,37 @@
     if (!duzenleme && o.isbn && kayitlar.some(function (k) { return k.isbn === o.isbn; })) {
       if (!confirm("Bu ISBN okulda zaten kayıtlı. Yine de eklensin mi?")) return;
     }
-    if (!duzenleme && !o.demirbas) o.demirbas = String(sonrakiDemirbas());
-    if (/^\d+$/.test(o.demirbas)) sonKullanilan = Math.max(sonKullanilan, parseInt(o.demirbas, 10));
+    var sayi = /^\d+$/.test(o.demirbas);
+    var otomatik = !duzenleme && (o.demirbas === "" || o.demirbas === otoDemirbas);
+    if (!otomatik && sayi && o.demirbas !== duzenlenenDemirbas &&
+        kayitlar.some(function (k) { return k.id !== duzenlenenId && String(k.demirbas || "").trim() === o.demirbas; })) {
+      if (!confirm("Demirbaş no " + o.demirbas + " okulda zaten var. Yine de kaydedilsin mi?")) return;
+    }
+    // Yeni kayıt ve değişen sayısal demirbaş sunucu sayacından geçer (çakışmayı önler)
+    var sayacGerek = !duzenleme || (sayi && o.demirbas !== duzenlenenDemirbas);
     var id = duzenlenenId || (Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
-    depo.kaydet(id, o, duzenleme).catch(hataGoster);
-    duzenlenenId = null;
-    $("btnKaydet").textContent = "Kaydet";
+    var dugme = $("btnKaydet"), yazi = dugme.textContent;
+    dugme.disabled = true; dugme.textContent = "Kaydediliyor…";
+    var no;
+    try {
+      no = await depo.kaydet(id, o, duzenleme, sayacGerek, otomatik, enBuyukDemirbas());
+    } catch (e) {
+      dugme.disabled = false; dugme.textContent = yazi;
+      if (e && (e.code === "unavailable" || /offline/i.test(e.message || ""))) durum("Demirbaş numarası için internet gerekli. Bağlantıyı kontrol edip tekrar Kaydet'e basın. Form olduğu gibi duruyor.", "uyari");
+      else hataGoster(e);
+      return;
+    }
+    dugme.disabled = false;
+    if (/^\d+$/.test(no || "")) sonKullanilan = Math.max(sonKullanilan, parseInt(no, 10));
+    duzenlenenId = null; duzenlenenDemirbas = "";
+    dugme.textContent = "Kaydet";
     formuDoldur(null);
     $("onizleme").style.display = "none";
-    durum("Kaydedildi.", "ok");
+    durum("Kaydedildi." + (no ? " Demirbaş no: " + no : ""), "ok");
   };
 
   $("btnTemizle").onclick = function () {
-    duzenlenenId = null;
+    duzenlenenId = null; duzenlenenDemirbas = "";
     $("btnKaydet").textContent = "Kaydet";
     formuDoldur(null);
     $("onizleme").style.display = "none";
@@ -645,6 +663,7 @@
       }
       bilgi.onclick = function () {
         duzenlenenId = k.id;
+        duzenlenenDemirbas = String(k.demirbas || "").trim();
         formuDoldur(k);
         $("btnKaydet").textContent = "Değişikliği kaydet";
         durum("Düzenleme modunda. Değiştirip kaydedin. Vazgeçmek için Formu temizle.");
@@ -723,11 +742,17 @@
     if (!bos.length) return;
     var ilk = sonrakiDemirbas();
     if (!confirm(bos.length + " kayda ekleme sırasıyla " + ilk + " ile " + (ilk + bos.length - 1) + " arasında demirbaş no verilsin mi?")) return;
-    var cift = bos.map(function (k, i) { return [k.id, String(ilk + i)]; });
-    sonKullanilan = Math.max(sonKullanilan, ilk + bos.length - 1);
-    depo.demirbasVer(cift)
-      .then(function () { durum(bos.length + " kayda demirbaş no verildi.", "ok"); })
-      .catch(hataGoster);
+    var dugme = $("btnDemirbasVer"); dugme.disabled = true;
+    depo.demirbasVer(bos.map(function (k) { return k.id; }), enBuyukDemirbas())
+      .then(function (bas) {
+        sonKullanilan = Math.max(sonKullanilan, bas + bos.length - 1);
+        durum(bos.length + " kayda " + bas + " - " + (bas + bos.length - 1) + " arası demirbaş no verildi.", "ok");
+      })
+      .catch(function (e) {
+        if (e && (e.code === "unavailable" || /offline/i.test(e.message || ""))) durum("Numara vermek için internet gerekli.", "uyari");
+        else hataGoster(e);
+      })
+      .then(function () { dugme.disabled = false; });
   };
   $("btnExcelHepsi").onclick = function () { excelIndir(tamKayitlar(), false); };
   $("btnExcelEksik").onclick = function () { excelIndir(eksikKayitlar(), true); };
@@ -747,7 +772,7 @@ setTimeout(function () {
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, query, where, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, runTransaction, collection, getDocs, query, where, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyA2CtczZ6nbl1fFfS8Rnb7nFHDRHJV4X4s",
@@ -840,12 +865,35 @@ function aboneOl(okul, user) {
     $("durum").className = "uyari";
   });
   window.kunyeDepoAyarla({
-    kaydet: (id, o, duzenleme) => {
+    kaydet: async (id, o, duzenleme, sayacGerek, otomatik, taban) => {
       const veri = Object.assign({}, o, { okul: okul });
       if (!duzenleme) { veri.ekleyen = eposta; veri.tarih = new Date().toISOString().slice(0, 10); veri.ts = Date.now(); }
-      return setDoc(doc(db, "kitaplar", id), veri, { merge: true });
+      if (!sayacGerek) { await setDoc(doc(db, "kitaplar", id), veri, { merge: true }); return veri.demirbas; }
+      // Okul sayacı: aynı anda iki kayıt aynı numarayı alamaz (Firestore transaction yeniden dener)
+      const sref = doc(db, "sayaclar", okul);
+      return runTransaction(db, async (tx) => {
+        const snap = await tx.get(sref);
+        const sayac = snap.exists() ? (Number(snap.data().demirbas) || 0) : 0;
+        const baz = Math.max(sayac, taban || 0);
+        const no = otomatik ? String(baz + 1) : String(veri.demirbas || "");
+        veri.demirbas = no;
+        const yeni = /^\d+$/.test(no) ? Math.max(baz, parseInt(no, 10)) : baz;
+        tx.set(sref, { demirbas: yeni }, { merge: true });
+        tx.set(doc(db, "kitaplar", id), veri, { merge: true });
+        return no;
+      });
     },
-    demirbasVer: (cift) => Promise.all(cift.map((c) => setDoc(doc(db, "kitaplar", c[0]), { demirbas: c[1] }, { merge: true }))),
+    demirbasVer: (idler, taban) => {
+      const sref = doc(db, "sayaclar", okul);
+      return runTransaction(db, async (tx) => {
+        const snap = await tx.get(sref);
+        const sayac = snap.exists() ? (Number(snap.data().demirbas) || 0) : 0;
+        const baz = Math.max(sayac, taban || 0);
+        idler.forEach((kid, i) => tx.set(doc(db, "kitaplar", kid), { demirbas: String(baz + 1 + i) }, { merge: true }));
+        tx.set(sref, { demirbas: baz + idler.length }, { merge: true });
+        return baz + 1;
+      });
+    },
     aktarimIsaretle: (idler, tarih) => Promise.all(idler.map((id) => setDoc(doc(db, "kitaplar", id), { aktarim: tarih }, { merge: true }))),
     sil: (id) => deleteDoc(doc(db, "kitaplar", id))
   });

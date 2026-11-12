@@ -1,4 +1,4 @@
-const V = "kunye-v4";
+const V = "kunye-v5";
 self.addEventListener("install", (e) => {
   self.skipWaiting();
   e.waitUntil(caches.open(V).then((c) => c.addAll(["./", "./index.html", "./icon.svg", "./manifest.webmanifest"])).catch(() => {}));
