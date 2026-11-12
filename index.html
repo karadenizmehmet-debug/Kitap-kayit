@@ -159,7 +159,7 @@
   </div>
 </div>
 <header>
-  <div class="marka"><img src="icon.svg" alt=""><div><b>Künye <span style="font-size:11px;font-weight:600;color:var(--soluk)">v3.9.2</span></b><span class="surum">Mehmet Karadeniz</span></div></div>
+  <div class="marka"><img src="icon.svg" alt=""><div><b>Künye <span style="font-size:11px;font-weight:600;color:var(--soluk)">v3.9.3</span></b><span class="surum">Mehmet Karadeniz</span></div></div>
   <div class="sag"><button type="button" class="paylasBtn"></button><button type="button" class="tema-dugme" aria-label="Koyu moda geç"></button><div id="kullanici" hidden><button id="btnCikis" class="mini">Çıkış</button></div></div>
 </header>
 <div id="karsilama" class="karsilama" hidden>
@@ -871,40 +871,77 @@ function aboneOl(okul, user) {
   });
   // Sayaç belgesi kitaplar koleksiyonunda durur (mevcut okul kuralları geçerli, ayrı kural gerekmez); listeden süzülür
   const sayacRef = (o) => doc(db, "kitaplar", "_sayac_" + o.replace(/[\/\s]+/g, "_"));
+  const yetkiYok = (e) => e && (e.code === "permission-denied" || /permission/i.test(e.message || ""));
+  // Sayaç belgesi kitap kaydı biçiminde tutulur ki okulun kitaplar kuralı onu da kabul etsin
+  const sayacVeri = (n) => ({ okul: okul, ekleyen: eposta, tarih: "", ts: 0, demirbas: String(n), baslik: "", yayinevi: "", basim_no: "", basim_yili: "", isbn: "" });
+  let sayacHazir = false;
+  // Okunamayan (henüz olmayan) sayaç belgesini oluşturur; taban sayesinde sıfırlanması numarayı geri götürmez
+  const sayacOlustur = async (taban) => {
+    if (sayacHazir) return;
+    try {
+      const s = await getDocFromServer(sayacRef(okul));
+      if (s.exists()) { sayacHazir = true; return; }
+    } catch (e) { if (!yetkiYok(e)) throw e; }
+    await setDoc(sayacRef(okul), sayacVeri(taban || 0));
+    sayacHazir = true;
+  };
+  // Transaction (çakışmasız); kural izin vermezse bir kez sayaç oluşturup dener, yine olmazsa düz yazar
+  const sayacla = async (islem, duz) => {
+    try { return await runTransaction(db, islem); }
+    catch (e) {
+      if (!yetkiYok(e)) throw e;
+      try { sayacHazir = false; await sayacOlustur(0); return await runTransaction(db, islem); }
+      catch (e2) { if (!yetkiYok(e2)) throw e2; console.warn("Sayaç transaction izni yok, düz yazılıyor", e2); return duz(); }
+    }
+  };
   window.kunyeDepoAyarla({
     kaydet: async (id, o, duzenleme, sayacGerek, otomatik, taban, bosIdler) => {
       const veri = Object.assign({}, o, { okul: okul });
       if (!duzenleme) { veri.ekleyen = eposta; veri.tarih = new Date().toISOString().slice(0, 10); veri.ts = Date.now(); }
       if (!sayacGerek) { await setDoc(doc(db, "kitaplar", id), veri, { merge: true }); return { no: veri.demirbas }; }
-      // Okul sayacı: aynı anda iki kayıt aynı numarayı alamaz (Firestore transaction yeniden dener)
       const sref = sayacRef(okul);
-      return runTransaction(db, async (tx) => {
-        const snap = await tx.get(sref);
-        const sayac = snap.exists() ? (Number(snap.data().demirbas) || 0) : 0;
-        const baz = Math.max(sayac, taban || 0);
-        // Eski demirbaşsız kayıtlar (ekleme sırasıyla) yeni kayıttan önce numaralanır
-        const bekleyen = [];
-        for (const kid of (otomatik ? (bosIdler || []) : [])) {
-          const ks = await tx.get(doc(db, "kitaplar", kid));
-          if (ks.exists() && !String(ks.data().demirbas || "").trim()) bekleyen.push(kid);
-        }
-        bekleyen.forEach((kid, i) => tx.set(doc(db, "kitaplar", kid), { demirbas: String(baz + 1 + i) }, { merge: true }));
+      const bos = otomatik ? (bosIdler || []) : [];
+      const hesapla = (baz, bekleyen) => {
         const no = otomatik ? String(baz + bekleyen.length + 1) : String(veri.demirbas || "");
         veri.demirbas = no;
         const yeni = /^\d+$/.test(no) ? Math.max(baz + bekleyen.length, parseInt(no, 10)) : baz + bekleyen.length;
-        tx.set(sref, { okul: okul, sayac: true, demirbas: yeni }, { merge: true });
+        return { no: no, yeni: yeni, sonuc: { no: no, eskiBas: baz + 1, eskiAdet: bekleyen.length } };
+      };
+      try { await sayacOlustur(taban); } catch (e) { if (!yetkiYok(e)) throw e; }
+      return sayacla(async (tx) => {
+        const snap = await tx.get(sref);
+        const baz = Math.max(snap.exists() ? (Number(snap.data().demirbas) || 0) : 0, taban || 0);
+        // Eski demirbaşsız kayıtlar (ekleme sırasıyla) yeni kayıttan önce numaralanır
+        const bekleyen = [];
+        for (const kid of bos) {
+          const ks = await tx.get(doc(db, "kitaplar", kid));
+          if (ks.exists() && !String(ks.data().demirbas || "").trim()) bekleyen.push(kid);
+        }
+        const h = hesapla(baz, bekleyen);
+        bekleyen.forEach((kid, i) => tx.set(doc(db, "kitaplar", kid), { demirbas: String(baz + 1 + i) }, { merge: true }));
+        tx.set(sref, { demirbas: String(h.yeni) }, { merge: true });
         tx.set(doc(db, "kitaplar", id), veri, { merge: true });
-        return { no: no, eskiBas: baz + 1, eskiAdet: bekleyen.length };
+        return h.sonuc;
+      }, async () => {
+        const baz = taban || 0;
+        const h = hesapla(baz, bos);
+        await Promise.all(bos.map((kid, i) => setDoc(doc(db, "kitaplar", kid), { demirbas: String(baz + 1 + i) }, { merge: true })));
+        await setDoc(doc(db, "kitaplar", id), veri, { merge: true });
+        return h.sonuc;
       });
     },
-    demirbasVer: (idler, taban) => {
+    demirbasVer: async (idler, taban) => {
       const sref = sayacRef(okul);
-      return runTransaction(db, async (tx) => {
+      try { await sayacOlustur(taban); } catch (e) { if (!yetkiYok(e)) throw e; }
+      return sayacla(async (tx) => {
         const snap = await tx.get(sref);
-        const sayac = snap.exists() ? (Number(snap.data().demirbas) || 0) : 0;
-        const baz = Math.max(sayac, taban || 0);
+        const baz = Math.max(snap.exists() ? (Number(snap.data().demirbas) || 0) : 0, taban || 0);
         idler.forEach((kid, i) => tx.set(doc(db, "kitaplar", kid), { demirbas: String(baz + 1 + i) }, { merge: true }));
-        tx.set(sref, { okul: okul, sayac: true, demirbas: baz + idler.length }, { merge: true });
+        tx.set(sref, { demirbas: String(baz + idler.length) }, { merge: true });
+        return baz + 1;
+      }, async () => {
+        const baz = taban || 0;
+        await Promise.all(idler.map((kid, i) => setDoc(doc(db, "kitaplar", kid), { demirbas: String(baz + 1 + i) }, { merge: true })));
         return baz + 1;
       });
     },
