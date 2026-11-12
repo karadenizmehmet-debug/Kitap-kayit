@@ -73,6 +73,8 @@
   .kayit.eksik-kayit { border-left-color:var(--pirinc); }
   .kayit .eksik-not { font-size:12.5px; color:#7a5a17; margin-top:2px; }
   :root[data-theme="dark"] .kayit .eksik-not { color:#e0bd70; }
+  .kayit.aktarildi { opacity:.65; border-left-color:var(--cizgi); }
+  .kayit .aktarim-not { font-size:12.5px; color:var(--tamam); margin-top:2px; }
   .ipucu { font-size:13px; color:var(--soluk); margin:-6px 0 8px; }
 
   footer { text-align:center; font-size:12px; color:var(--soluk); padding:10px 14px 22px; }
@@ -157,7 +159,7 @@
   </div>
 </div>
 <header>
-  <div class="marka"><img src="icon.svg" alt=""><div><b>Künye <span style="font-size:11px;font-weight:600;color:var(--soluk)">v3.6</span></b><span class="surum">Mehmet Karadeniz</span></div></div>
+  <div class="marka"><img src="icon.svg" alt=""><div><b>Künye <span style="font-size:11px;font-weight:600;color:var(--soluk)">v3.7</span></b><span class="surum">Mehmet Karadeniz</span></div></div>
   <div class="sag"><button type="button" class="paylasBtn"></button><button type="button" class="tema-dugme" aria-label="Koyu moda geç"></button><div id="kullanici" hidden><button id="btnCikis" class="mini">Çıkış</button></div></div>
 </header>
 <div id="karsilama" class="karsilama" hidden>
@@ -231,9 +233,10 @@
 
   <div class="kart">
     <h2>Tam kayıtlar (<span id="sayi">0</span>)</h2>
-    <div class="ipucu">Tüm bilgileri dolu kitaplar. Düzeltmek için kitabın üstüne dokunun.</div>
+    <div class="ipucu">Tüm bilgileri dolu kitaplar. Başka sisteme aktarılanlar silik görünür. Düzeltmek için kitabın üstüne dokunun.</div>
     <div id="liste"></div>
-    <button id="btnExcel">Tam kayıtları indir (.xlsx)</button>
+    <button id="btnExcel">Yeni kayıtları indir (.xlsx)</button>
+    <button id="btnExcelHepsi" class="ikincil">Tam kayıtların hepsini indir (.xlsx)</button>
   </div>
 
   <div class="kart">
@@ -579,6 +582,7 @@
     return e;
   }
   function tamKayitlar() { return kayitlar.filter(function (k) { return !kayitEksikleri(k).length; }); }
+  function yeniKayitlar() { return tamKayitlar().filter(function (k) { return !k.aktarim; }); }
   function eksikKayitlar() { return kayitlar.filter(function (k) { return kayitEksikleri(k).length; }); }
 
   var tumuGosterEksik = false;
@@ -603,6 +607,13 @@
       alt.textContent = [k.demirbas ? "Dmr " + k.demirbas : "", k.yayinevi, k.basim_no ? k.basim_no + ". basım" : "", k.basim_yili].filter(Boolean).join(" · ");
       bilgi.appendChild(ad);
       bilgi.appendChild(alt);
+      if (!eksikMi && k.aktarim) {
+        satir.className += " aktarildi";
+        var an = document.createElement("div");
+        an.className = "aktarim-not";
+        an.textContent = "✓ Aktarıldı " + k.aktarim;
+        bilgi.appendChild(an);
+      }
       if (eksikMi) {
         var not = document.createElement("div");
         not.className = "eksik-not";
@@ -644,10 +655,11 @@
   function listele() {
     grupCiz(tamKayitlar(), "liste", "sayi", false);
     grupCiz(eksikKayitlar(), "listeEksik", "sayiEksik", true);
+    $("btnExcel").textContent = "Yeni kayıtları indir (" + yeniKayitlar().length + ")";
   }
 
-  function excelIndir(liste, eksikMi) {
-    if (!liste.length) { durum(eksikMi ? "İndirilecek eksik kayıt yok." : "İndirilecek tam kayıt yok.", "uyari"); return; }
+  function excelIndir(liste, eksikMi, bos) {
+    if (!liste.length) { durum(bos || (eksikMi ? "İndirilecek eksik kayıt yok." : "İndirilecek tam kayıt yok."), "uyari"); return; }
     var basliklar = ["ISBN", "Demirbas", "BaskiYili", "Baslik", "BasimSayisi", "Yayinevi"];
     var genislik = [{ wch: 16 }, { wch: 10 }, { wch: 10 }, { wch: 36 }, { wch: 12 }, { wch: 22 }];
     if (eksikMi) { basliklar.push("Eksik"); genislik.push({ wch: 28 }); }
@@ -667,7 +679,19 @@
     XLSX.utils.book_append_sheet(wb, ws, eksikMi ? "Eksikler" : "Kitaplar");
     XLSX.writeFile(wb, (eksikMi ? "kitap-kayit-eksik-" : "kitap-kayit-tam-") + new Date().toISOString().slice(0, 10) + ".xlsx");
   }
-  $("btnExcel").onclick = function () { excelIndir(tamKayitlar(), false); };
+  $("btnExcel").onclick = function () {
+    var liste = yeniKayitlar();
+    excelIndir(liste, false, "Yeni kayıt yok. Hepsini indirmek için alttaki düğmeyi kullanın.");
+    if (!liste.length || !depo) return;
+    setTimeout(function () {
+      if (!confirm(liste.length + " kitap indirildi. Başka sisteme aktarıldı olarak işaretlensin mi?\n\nTamam: bir sonraki indirmede bu kitaplar gelmez.\nİptal: yeni sayılmaya devam eder.")) return;
+      var bugun = new Date().toISOString().slice(0, 10);
+      depo.aktarimIsaretle(liste.map(function (k) { return k.id; }), bugun)
+        .then(function () { durum(liste.length + " kitap aktarıldı olarak işaretlendi.", "ok"); })
+        .catch(hataGoster);
+    }, 700);
+  };
+  $("btnExcelHepsi").onclick = function () { excelIndir(tamKayitlar(), false); };
   $("btnExcelEksik").onclick = function () { excelIndir(eksikKayitlar(), true); };
 
   listele();
@@ -783,6 +807,7 @@ function aboneOl(okul, user) {
       if (!duzenleme) { veri.ekleyen = eposta; veri.tarih = new Date().toISOString().slice(0, 10); veri.ts = Date.now(); }
       return setDoc(doc(db, "kitaplar", id), veri, { merge: true });
     },
+    aktarimIsaretle: (idler, tarih) => Promise.all(idler.map((id) => setDoc(doc(db, "kitaplar", id), { aktarim: tarih }, { merge: true }))),
     sil: (id) => deleteDoc(doc(db, "kitaplar", id))
   });
   yerelAktar(okul, eposta);
